@@ -2,6 +2,27 @@ from typing import List, Optional, Literal
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone
 
+'''
+Classes to help with NLIP message parsing and generation.
+
+Typical NLIP message structure:
+{
+        "schema": "nlip/v1",
+        "id": "msg-1",
+        "sender": "client",
+        "messages": [
+            {"format": "text", "content": "hello"}
+        ]
+    }
+}
+NLIPMessage represents the incoming message structure
+for everything execept the messages list, which is represented
+by NLIPSubMessage.
+
+NLIPResponse represents the outgoing message structure,
+which adds a timestamp and sets the sender to "supervisor".
+'''
+
 class NLIPSubMessage(BaseModel):
     format: Literal["text", "image", "video", "audio"]
     subformat: Optional[str] = None
