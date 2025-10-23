@@ -55,7 +55,20 @@ nlip_swarm/
 
 ### Backend
 
-*Setup instructions coming soon*
+1. Navigate to the backend directory:
+   ```bash
+   cd backend
+   ```
+
+2. Install Requirements
+   ```bash
+   pip install -r .\requirements.txt
+   ```
+
+3. Run The backend server
+   ```bash
+   python -m app.api:app --reload --port 8000
+   ```
 
 ## Contributors
 
