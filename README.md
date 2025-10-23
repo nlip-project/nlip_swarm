@@ -67,7 +67,7 @@ nlip_swarm/
 
 3. Run The backend server
    ```bash
-   python -m app.api:app --reload --port 8000
+   uvicorn app.api:app --reload --port 8000
    ```
 
 ## Contributors

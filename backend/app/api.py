@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .routes.nlip import router as nlip_router
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="NLIP Swarm Registar", version="0.1.0")
+    app = FastAPI(title="NLIP Swarm Registrar", version="0.1.0")
 
     app.add_middleware(
         CORSMiddleware,
@@ -15,7 +15,7 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     def health():
-        return {"status": "ok", "service": "nlip_swarm_registar"}
+        return {"status": "ok", "service": "nlip_swarm_registrar"}
     
     app.include_router(nlip_router)
     return app

@@ -1,4 +1,4 @@
-# Backend Enpoint
+# Backend Endpoint
 
 
 ### /health
