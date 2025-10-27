@@ -8,22 +8,21 @@ import httpx
 class LlavaImageRecognitionAgent:
     def __init__(self, model: Optional[str] = None, base_url: Optional[str] = None):
         self.base_url = (base_url or os.getenv("OLLAMA_URL", "http://localhost:11434")).rstrip("/")
-        self.model = (model or os.getenv("OLLAMA_IMAGE_MODEL", "llava"))
+        self.model = (model or os.getenv("OLLAMA_MODEL", "llava"))
 
-    def recognize_image(self, encodedImage: str, prompt: Optional[str] = None) -> str:
+    def recognize_image(self, image_path: str):
         # Placeholder for image recognition logic
         # In a real implementation, this would involve loading the image
         # and passing it through the Llama model for recognition.
 
-        #encodedImage = base64.b64encode(open(image_path, "rb").read()).decode("utf-8")
-        # Base64 encoded string sent over via NLIP message, so just process that directly
+        encodedImage = base64.b64encode(open(image_path, "rb").read()).decode("utf-8")
 
         url = f"{self.base_url}/api/generate"
         payload = {
             "model": self.model,
-            "prompt": prompt or "Describe the content of this image in detail.",
+            "prompt": "Where is the location of this image?",
             "images": [encodedImage],
-            "stream": False, # No streaming for simplicity right now, don't have to deal with async generator
+            "stream": False, # No streaming for simplicity right now, dont' have to deal with async generator
         }
 
         try:
@@ -44,12 +43,5 @@ class LlavaImageRecognitionAgent:
             print("Failed to parse JSON response")
             return ""
 
-# imageDescription = LlavaImageRecognitionAgent().recognize_image("./test.jpg")
-# print("Image Description:", imageDescription.get("response"))
-    def test_image_recognition(self, image_path: str, prompt: str):
-        with open(image_path, "rb") as f:
-            encodedImage = base64.b64encode(f.read()).decode("utf-8")
-        imageDescription = LlavaImageRecognitionAgent().recognize_image(encodedImage, prompt)
-        print("Image Description:", imageDescription.get("response")) 
-
-# LlavaImageRecognitionAgent().test_image_recognition("./test.jpg", "State the country of this image and nothing else.")
+imageDescription = LlavaImageRecognitionAgent().recognize_image("./test.jpg")
+print("Image Description:", imageDescription.get("response"))
