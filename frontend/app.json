@@ -1,23 +1,25 @@
 {
   "expo": {
     "name": "frontend",
-    "slug": "frontend",
+    "slug": "nlip-frontend",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
     "scheme": "frontend",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.frontend"
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app needs access to the camera to let you take photos to share in chat.",
+        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library so you can choose images to share in chat."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "foregroundImage": "TODO",
+        "backgroundImage": "TODO",
+        "monochromeImage": "TODO"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -25,14 +27,14 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "TODO"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "TODO",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff",
@@ -45,6 +47,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "2feea116-ae0a-4f06-8180-32247d0f4e06"
+      }
+    },
+    "owner": "jtfulkerson"
   }
 }
