@@ -3,3 +3,4 @@ httpx
 uvicorn[standard]
 fastapi
 pydantic
+langdetect
