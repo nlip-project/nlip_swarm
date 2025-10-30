@@ -1,67 +1,70 @@
+from typing import Union
 import logging
-
-from fastapi import FastAPI
-from nlip_sdk.nlip import NLIP_Message
-from nlip_sdk import errors as err
-import secrets
 import inspect
 
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
+
+from nlip_sdk import nlip
+
+router = APIRouter()
 logger = logging.getLogger('uvicorn.error')
 
-class NLIP_Session:
+async def start_session(request: Request):
+    logger.info('Called start_session')
+    app = request.app
 
-    def set_correlator(self):
-        self.correlator = secrets.token_urlsafe()
+    if app.state.client_app and not hasattr(request.state, 'nlip_session'):
+        session = app.state.client_app.create_session()
+        if inspect.isawaitable(session):
+            session = await session
+        request.state.nlip_session = session
 
-    def get_correlator(self):
-        if hasattr(self, 'correlator'):
-            return self.correlator
-        return None
-    
-    def _print_withcorrelator(self, message: str):
-        correlator = self.get_correlator()
-        if correlator is not None:
-            message = message + f" [correlator={self.correlator}]"
-        logger.info(message)
+        start_result = session.start()
+        if inspect.isawaitable(start_result):
+            await start_result
 
-    def log_info(self, message: str):
-        self._print_withcorrelator(message)
+        app.state.client_app.add_session(session)
+        logger.info('Called nlip_session.start')
 
-    async def start(self):
-        self._print_withcorrelator("NLIP Session started")
 
-    async def execute(self, message: NLIP_Message) -> NLIP_Message:
-        raise err.UnImplementedError("execute", self.__class__.__name__)
-    
-    async def correlated_execute(self, message: NLIP_Message) -> NLIP_Message:
-        other_correlator = message.extract_conversation_token()
-        response_correlator = self.execute(message)
-        response = await response_correlator if inspect.isawaitable(response_correlator) else response_correlator
 
-        token = response.extract_conversation_token()
-        if other_correlator is not None:
-            response.add_conversation_token(other_correlator, True)
-        else:
-            if token is not None:
-                local_correlator = self.get_correlator()
-            if local_correlator is not None:
-                response.add_conversation_token(local_correlator)
+async def end_session(request: Request):
+    if request.app.state.client_app:
+        request.app.state.client_app.remove_session(request.state.nlip_session)
+
+    if hasattr(request.state, 'nlip_session'):
+        stop_result = request.state.nlip_session.stop()
+        if inspect.isawaitable(stop_result):
+            await stop_result
+        logger.info('Called nlip_session.stop')
+
+    request.state.nlip_session = None
+
+
+
+async def session_invocation(request: Request):
+    if not hasattr(request.state, 'nlip_session'):
+        await start_session(request)
+    try:
+        yield request.state.nlip_session
+    finally:
+        await end_session(request)
+
+import traceback
+import sys
+
+@router.post("/")
+async def chat_top(msg: nlip.NLIP_Message, session=Depends(session_invocation)):
+    try:
+        response = await session.correlated_execute(msg)
         return response
-    
-    async def end(self):
-        self._print_withcorrelator("NLIP Session ended")
+    except Exception as e:
+        print(e)
+        traceback.print_exc(file=sys.stdout)
+        raise HTTPException(status_code=400, detail=str(e))
 
-    def get_logger(self):
-        return logger
-    
-class NLIP_Application:
-    async def startup(self):
-        raise err.UnImplementedError(f"startup", self.__class__.__name__)
-    
-    async def shutdown(self):
-        raise err.UnImplementedError(f"shutdown", self.__class__.__name__)
-    
-    def get_logger(self):
-        return logger
-    
-def register_nlip_routes(app: FastAPI, nlip_app: NLIP_Application):
+
+@router.post("/upload/")
+async def upload(contents: Union[UploadFile, None] = None):
+    filename = contents.filename if contents else "No file parameter"
+    return nlip.NLIP_Factory.create_text(f"File {filename} uploaded successfully")

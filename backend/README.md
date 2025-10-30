@@ -3,7 +3,6 @@
 ### /health
 
 Simple health check for the app
-Import "fastapi" could not be resolvedPylancereportMissingImports
 
 ### /process
 
