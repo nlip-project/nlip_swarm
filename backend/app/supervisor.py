@@ -11,6 +11,9 @@ PIVOT_LOCALE = os.getenv("NLIP_TRANSLATION_PIVOT_LOCALE", "en")
 DEFAULT_SOURCE_LOCALE = os.getenv("NLIP_TRANSLATION_DEFAULT_LOCALE", "en")
 _translator = OllamaTranslationAgent()
 
+"""
+Actual message parsing logic.
+"""
 
 def process_nlip(payload: nlip.NLIP_Message) -> nlip.NLIP_Message:
     """
@@ -59,6 +62,9 @@ def process_nlip(payload: nlip.NLIP_Message) -> nlip.NLIP_Message:
 
     return response
 
+"""
+Ben I don't know what these function are for so I want you to look at them.
+"""
 
 def _resolve_source_locale(payload: nlip.NLIP_Message, text_messages: List[nlip.NLIP_SubMessage]) -> str:
     """
@@ -108,7 +114,6 @@ def _run_domain_logic(messages_in_pivot: List[str]) -> List[str]:
     """
     return messages_in_pivot
 
-
 def _translate_messages_to_source(translated_messages: List[str], source_locale: str) -> List[nlip.NLIP_SubMessage]:
     """
     Translate the pivot-language responses back into the user's locale.
@@ -155,6 +160,11 @@ def _translate_messages_to_source(translated_messages: List[str], source_locale:
     return final_messages
 
 TEXT_KEYS = ("text", "content", "message", "body")
+
+"""
+Helper functions for pulling the actual content from an NLIP message,
+recognizing languages, and for processing a request.
+"""
 
 def _extract_text(message: nlip.NLIP_Message) -> Optional[str]:
 
@@ -218,8 +228,11 @@ def _detect_safe(text: str) -> Optional[str]:
 def _same_lang(a: Optional[str], b: Optional[str]) -> bool:
     return bool(a and b and a.lower() == b.lower())
 
-
-
+"""
+Actual Application and Session classes for NLIP server.
+Might have a more generic architecture in future, 
+to making switching models/using multiple models is better.
+"""
 class TranslationSession(NLIP_Session):
     async def execute(self, message: nlip.NLIP_Message) -> nlip.NLIP_Message:
         return process_nlip(message)
