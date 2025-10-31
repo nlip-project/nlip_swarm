@@ -10,17 +10,18 @@ class LlavaImageRecognitionAgent:
         self.base_url = (base_url or os.getenv("OLLAMA_URL", "http://localhost:11434")).rstrip("/")
         self.model = (model or os.getenv("OLLAMA_MODEL", "llava"))
 
-    def recognize_image(self, image_path: str):
+    def recognize_image(self, encodedImage: str, prompt: Optional[str] = None) -> str:
         # Placeholder for image recognition logic
         # In a real implementation, this would involve loading the image
         # and passing it through the Llama model for recognition.
 
-        encodedImage = base64.b64encode(open(image_path, "rb").read()).decode("utf-8")
+        #encodedImage = base64.b64encode(open(image_path, "rb").read()).decode("utf-8")
+        # Base64 encoded string sent over via NLIP message, so just process that directly
 
         url = f"{self.base_url}/api/generate"
         payload = {
             "model": self.model,
-            "prompt": "Where is the location of this image?",
+            "prompt": prompt or "Describe the content of this image in detail.",
             "images": [encodedImage],
             "stream": False, # No streaming for simplicity right now, dont' have to deal with async generator
         }
@@ -43,5 +44,13 @@ class LlavaImageRecognitionAgent:
             print("Failed to parse JSON response")
             return ""
 
-imageDescription = LlavaImageRecognitionAgent().recognize_image("./test.jpg")
-print("Image Description:", imageDescription.get("response"))
+# imageDescription = LlavaImageRecognitionAgent().recognize_image("./test.jpg")
+# print("Image Description:", imageDescription.get("response"))
+    def test_image_recognition(self):
+        image_path = "./test.jpg"
+        prompt = "State the country of this image and nothing else."
+        encodedImage = base64.b64encode(open(image_path, "rb").read()).decode("utf-8")
+        imageDescription = LlavaImageRecognitionAgent().recognize_image(encodedImage, prompt)
+        print("Image Description:", imageDescription.get("response")) 
+
+LlavaImageRecognitionAgent().test_image_recognition()
