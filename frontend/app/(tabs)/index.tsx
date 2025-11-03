@@ -32,6 +32,7 @@ export default function TabThreeScreen() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [fileSize, setFileSize] = useState<number | null>(null);
   const [fileType, setFileType] = useState<string | null>(null);
+  const [oldConversations, setOldConversations] = useState<Message[][]>([]);
   type Message = {
     id: string;
     text?: string;
@@ -64,7 +65,15 @@ export default function TabThreeScreen() {
 
   // Clear chat function
   function clearChat() {
-    setMessages([]);
+    if (messages.length > 0) {
+      setOldConversations((prev) => [...prev, messages]);
+      setMessages([]);
+    }
+  }
+
+  function onRestoreConversation(idx: number) {
+    setMessages(oldConversations[idx]);
+    setOldConversations((prev) => prev.filter((_, i) => i !== idx));
   }
 
   // Auto-scroll to bottom when keyboard opens so the input stays visible
@@ -204,7 +213,12 @@ export default function TabThreeScreen() {
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
         <ThemedView style={styles.container}>
-          <Drawout triggerPosition={drawoutPosition} clearChat={clearChat} />
+          <Drawout
+            triggerPosition={drawoutPosition}
+            clearChat={clearChat}
+            oldConversations={oldConversations}
+            onRestoreConversation={onRestoreConversation}
+          />
           <FlatList
             ref={listRef}
             style={styles.list}
