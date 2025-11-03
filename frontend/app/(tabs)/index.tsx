@@ -73,7 +73,7 @@ export default function TabThreeScreen() {
 
   function onRestoreConversation(idx: number) {
     setMessages(oldConversations[idx]);
-    setOldConversations((prev) => prev.filter((_, i) => i !== idx));
+    // Do not remove the conversation from oldConversations
   }
 
   // Auto-scroll to bottom when keyboard opens so the input stays visible
