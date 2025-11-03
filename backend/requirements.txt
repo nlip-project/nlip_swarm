@@ -5,6 +5,7 @@ uvicorn[standard]
 fastapi
 pydantic
 langdetect
+nlip-sdk
 nlip_sdk
 langchain
 langchain-ollama
