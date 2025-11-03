@@ -8,7 +8,7 @@ import httpx
 class LlavaImageRecognitionAgent:
     def __init__(self, model: Optional[str] = None, base_url: Optional[str] = None):
         self.base_url = (base_url or os.getenv("OLLAMA_URL", "http://localhost:11434")).rstrip("/")
-        self.model = (model or os.getenv("OLLAMA_MODEL", "llava"))
+        self.model = (model or os.getenv("OLLAMA_IMAGE_MODEL", "llava"))
 
     def recognize_image(self, encodedImage: str, prompt: Optional[str] = None) -> str:
         # Placeholder for image recognition logic
@@ -46,11 +46,9 @@ class LlavaImageRecognitionAgent:
 
 # imageDescription = LlavaImageRecognitionAgent().recognize_image("./test.jpg")
 # print("Image Description:", imageDescription.get("response"))
-    def test_image_recognition(self):
-        image_path = "./test.jpg"
-        prompt = "State the country of this image and nothing else."
+    def test_image_recognition(self, image_path: str, prompt: str):
         encodedImage = base64.b64encode(open(image_path, "rb").read()).decode("utf-8")
         imageDescription = LlavaImageRecognitionAgent().recognize_image(encodedImage, prompt)
         print("Image Description:", imageDescription.get("response")) 
 
-LlavaImageRecognitionAgent().test_image_recognition()
+# LlavaImageRecognitionAgent().test_image_recognition("./test.jpg", "State the country of this image and nothing else.")
