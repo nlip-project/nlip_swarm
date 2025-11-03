@@ -22,7 +22,7 @@ class OllamaTranslationAgent:
         timeout: float = 30.0,
     ) -> None:
         self.base_url = (base_url or os.getenv("OLLAMA_URL", "http://localhost:11434")).rstrip("/")
-        self.model = model or os.getenv("OLLAMA_TRANSLATION_MODEL", "llama3.1")
+        self.model = model or "llama3.1"
         self.timeout = timeout
 
     def translate(self, text: str, target_locale: Optional[str] = None) -> str:
@@ -78,9 +78,10 @@ class OllamaTranslationAgent:
         """
         return (
             "You are a translation engine. Translate the user text into the "
-            f"locale '{locale}'. Respond with the translated text only.\n\n"
+            f"locale '{locale}'. Output the translation verbatim and nothing else. "
+            "Do not add greetings, apologies, or explanations. If you cannot translate, "
+            "respond with exactly '[translation-error]'.\n\n"
             "User text:\n"
             f"{text}\n\n"
             "Translated text:"
         )
-

@@ -22,6 +22,7 @@ other locale) interact with the chatbot in their preferred language.
 The translation agent reads the following environment variables (all optional):
 
 - `OLLAMA_URL`: Base URL for the Ollama server (default `http://localhost:11434`).
-- `OLLAMA_TRANSLATION_MODEL`: Name of the Ollama model to use (default `llama3.1`).
 - `NLIP_TRANSLATION_PIVOT_LOCALE`: Language used for internal reasoning (default `en`).
 - `NLIP_TRANSLATION_DEFAULT_LOCALE`: Locale assumed when detection fails (default `en`).
+
+The translation agent targets the `llama3.1` model by default; pass `model="..."` when constructing `OllamaTranslationAgent` if you need to pick a different model.
