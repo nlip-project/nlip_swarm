@@ -4,5 +4,6 @@ uvicorn[standard]
 fastapi
 pydantic
 langdetect
+nlip-sdk
 python-multipart
 openai-whisper>=20231117

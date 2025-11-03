@@ -1,6 +1,7 @@
 import base64
 import binascii
 import os
+from collections.abc import Iterable as IterableABC
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
@@ -92,11 +93,12 @@ class SoundAgent:
         if not aggregated_text.strip():
             raise SoundAgentError("Transcription returned no text.")
 
-        final_language = target_locale or transcripts[0].language or samples[0].language or "en"
+        final_language = transcripts[0].language or samples[0].language or "en"
         final_text = aggregated_text
         if target_locale and self.translator:
             try:
                 final_text = self.translator.translate(aggregated_text, target_locale)
+                final_language = target_locale
             except TranslationError as exc:
                 raise SoundAgentError(f"Translation failed: {exc}") from exc
 
@@ -121,10 +123,14 @@ class SoundAgent:
     def _iter_message_candidates(self, payload: Any) -> Iterable[Any]:
         if payload is None:
             return
-        yield payload
-        submessages = self._resolve_attr(payload, "submessages") or []
-        for sub in submessages:
-            yield sub
+
+        stack = [payload]
+        while stack:
+            candidate = stack.pop()
+            yield candidate
+            submessages = self._resolve_attr(candidate, "submessages") or []
+            if isinstance(submessages, IterableABC) and not isinstance(submessages, (str, bytes)):
+                stack.extend(reversed(list(submessages)))
 
     @staticmethod
     def _resolve_attr(obj: Any, key: str) -> Any:

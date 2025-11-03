@@ -9,12 +9,17 @@ if str(ROOT) not in sys.path:
 import httpx
 import pytest
 
+from backend.app.agents import sound as sound_module
+sound_module.nlip = None
+
 from backend.app.agents.sound import (
     AudioDecodingError,
     MissingAudioError,
     SoundAgent,
+    SoundAgentError,
     TranscriptionServiceError,
 )
+from backend.app.agents.translation import TranslationError
 
 
 class DummyResponse:
@@ -123,3 +128,92 @@ def test_sound_agent_raises_on_whisper_http_failure(monkeypatch):
     monkeypatch.setattr(httpx, "post", fake_post)
     with pytest.raises(TranscriptionServiceError):
         agent.process(message)
+
+
+def test_sound_agent_handles_nested_audio_and_multiple_samples(monkeypatch):
+    audio_bytes = base64.b64encode(b"audio-one").decode("ascii")
+    raw_audio = b"audio-two"
+    message = {
+        "submessages": [
+            {
+                "format": "audio",
+                "label": "top-audio",
+                "content": {
+                    "encoding": "base64",
+                    "data": audio_bytes,
+                    "language": "es",
+                },
+            },
+            {
+                "format": "container",
+                "submessages": [
+                    {
+                        "format": "audio",
+                        "label": "nested-audio",
+                        "content": raw_audio,
+                    }
+                ],
+            },
+        ]
+    }
+    translator = StubTranslator()
+    agent = SoundAgent(whisper_url="http://whisper.test", translator=translator)
+
+    responses = [
+        {"text": "hola mundo", "language": "es"},
+        {"text": "bonjour monde", "language": "fr"},
+    ]
+
+    call_count = {"value": 0}
+
+    def fake_post(url, *, data=None, files=None, timeout=None):
+        assert url == "http://whisper.test/v1/audio/transcriptions"
+        index = call_count["value"]
+        call_count["value"] += 1
+        return DummyResponse(responses[index])
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    result = agent.process(message, target_locale="en")
+
+    assert translator.calls == [("hola mundo bonjour monde", "en")]
+    assert result["content"] == "hola mundo bonjour monde::en"
+    assert result["language"] == "en"
+    assert len(result["metadata"]["segments"]) == 2
+    assert result["metadata"]["segments"][1]["source_label"] == "nested-audio"
+
+
+def test_sound_agent_translation_failure_raises_sound_agent_error(monkeypatch):
+    class FailingTranslator:
+        def translate(self, *args, **kwargs):
+            raise TranslationError("nope")
+
+    audio_bytes = base64.b64encode(b"audio").decode("ascii")
+    message = {
+        "submessages": [
+            {
+                "format": "audio",
+                "content": {
+                    "encoding": "base64",
+                    "data": audio_bytes,
+                },
+            }
+        ]
+    }
+
+    agent = SoundAgent(whisper_url="http://whisper.test", translator=FailingTranslator())
+
+    def fake_post(*args, **kwargs):
+        return DummyResponse({"text": "hola", "language": "es"})
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    with pytest.raises(SoundAgentError) as excinfo:
+        agent.process(message, target_locale="en")
+    assert "Translation failed" in str(excinfo.value)
+
+
+def test_sound_agent_handles_none_payload_with_missing_audio():
+    agent = SoundAgent(whisper_url="http://whisper.test")
+    with pytest.raises(MissingAudioError):
+        agent.process(None)
