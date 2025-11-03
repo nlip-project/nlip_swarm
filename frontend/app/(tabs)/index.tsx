@@ -12,6 +12,7 @@ export default function TabThreeScreen() {
     const theme = useColorScheme() ?? 'light';
     const c = Colors[theme];
     const [text, setText] = useState('');
+    const [isSending, setIsSending] = useState(false);
     const [imageUri, setImageUri] = useState<string | null>(null);
     const [fileUri, setFileUri] = useState<string | null>(null);
     const [fileName, setFileName] = useState<string | null>(null);
@@ -26,10 +27,12 @@ export default function TabThreeScreen() {
         fileSize?: number | null;
         fileType?: string | null;
         timestamp: number;
-        sender: 'me'
+        sender: 'me' | 'other'
     };
     const [messages, setMessages] = useState<Message[]>([]);
     const listRef = useRef<FlatList<Message>>(null);
+
+    const API_URL = 'http://localhost:8000/nlip/';
 
     // Helper function to format file size
     function formatFileSize(bytes: number): string {
@@ -127,11 +130,91 @@ export default function TabThreeScreen() {
         }
     }
 
+    async function sendToBackend(inputText: string): Promise<string> {
+        console.log('[sendToBackend] Starting request with text:', inputText);
+        
+        const payload = {
+            format: 'text',
+            subformat: 'plain',
+            content: inputText,
+            submessages: [
+                {
+                    format: 'generic',
+                    subformat: 'translation_request',
+                    content: {
+                        target_language: 'en',
+                    },
+                },
+            ],
+        };
+        
+        console.log('[sendToBackend] Payload:', JSON.stringify(payload, null, 2));
+        console.log('[sendToBackend] Sending POST to:', API_URL);
+
+        // Add timeout to prevent hanging forever
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+        try {
+            const res = await fetch(API_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+                signal: controller.signal,
+            });
+
+            clearTimeout(timeoutId);
+            console.log('[sendToBackend] Response status:', res.status, res.statusText);
+
+            if (!res.ok) {
+                const text = await res.text().catch(() => '');
+                console.error('[sendToBackend] Error response body:', text);
+                throw new Error(`Backend error ${res.status}: ${text || res.statusText}`);
+            }
+
+            const data = await res.json();
+            console.log('[sendToBackend] Response data:', JSON.stringify(data, null, 2));
+            
+            const content = data?.content;
+            console.log('[sendToBackend] Extracted content:', content);
+            
+            if (typeof content === 'string' && content.trim().length > 0) {
+                console.log('[sendToBackend] Returning content as string:', content);
+                return content;
+            }
+            if (Array.isArray(data?.submessages)) {
+                console.log('[sendToBackend] Checking submessages:', data.submessages.length);
+                const firstText = data.submessages.find((s: any) => s?.format?.toLowerCase?.() === 'text' && typeof s?.content === 'string');
+                if (firstText?.content) {
+                    console.log('[sendToBackend] Found text in submessage:', firstText.content);
+                    return firstText.content as string;
+                }
+            }
+            const fallback = typeof content === 'object' ? JSON.stringify(content) : 'Received response';
+            console.log('[sendToBackend] Using fallback response:', fallback);
+            return fallback;
+        } catch (error: any) {
+            clearTimeout(timeoutId);
+            if (error.name === 'AbortError') {
+                console.error('[sendToBackend] Request timed out after 30 seconds');
+                throw new Error('Request timed out. The server may be slow or unresponsive.');
+            }
+            console.error('[sendToBackend] Fetch error:', error);
+            throw error;
+        }
+    }
+
     function handleSend() {
+        console.log('[handleSend] Called with text:', text);
         const trimmed = text.trim();
         if (!trimmed && !imageUri && !fileUri) {
+            console.log('[handleSend] No content to send, returning early');
             return;
         }
+        
+        console.log('[handleSend] Creating message with trimmed text:', trimmed);
         const newMessage: Message = {
             id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             text: trimmed || undefined,
@@ -143,6 +226,8 @@ export default function TabThreeScreen() {
             timestamp: Date.now(),
             sender: 'me',
         };
+        
+        console.log('[handleSend] Adding message to list:', newMessage);
         // Prepend for inverted FlatList so newest appears at the visual bottom
         setMessages((prev) => [newMessage, ...prev]);
         setText('');
@@ -155,6 +240,38 @@ export default function TabThreeScreen() {
         requestAnimationFrame(() => {
             listRef.current?.scrollToOffset({ offset: 0, animated: true });
         });
+
+        // Only send to backend when there's text content. Attachments are not sent yet.
+        if (!trimmed) {
+            console.log('[handleSend] No text content, skipping backend call');
+            return;
+        }
+        
+        console.log('[handleSend] Sending to backend...');
+        setIsSending(true);
+        void sendToBackend(trimmed)
+            .then((reply) => {
+                console.log('[handleSend] Received reply:', reply);
+                const replyMessage: Message = {
+                    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    text: reply,
+                    timestamp: Date.now(),
+                    sender: 'other',
+                };
+                console.log('[handleSend] Adding reply message:', replyMessage);
+                setMessages((prev) => [replyMessage, ...prev]);
+                requestAnimationFrame(() => {
+                    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+                });
+            })
+            .catch((err) => {
+                console.error('[handleSend] Error sending message:', err);
+                Alert.alert('Error', `Failed to contact server: ${err.message}`);
+            })
+            .finally(() => {
+                console.log('[handleSend] Request complete, resetting isSending');
+                setIsSending(false);
+            });
     }
 
     return (
@@ -177,6 +294,11 @@ export default function TabThreeScreen() {
                                 styles.messageRow,
                                 item.sender === 'me' ? styles.rowMe : styles.rowOther,
                             ]}>
+                                {item.sender === 'other' ? (
+                                    <View style={[styles.avatar, { borderColor: c.icon, backgroundColor: c.background }]}>
+                                        <Ionicons name="person" size={18} color={c.icon} />
+                                    </View>
+                                ) : null}
                                 <View
                                     style={[
                                         styles.bubble,
@@ -230,10 +352,11 @@ export default function TabThreeScreen() {
                                         </TouchableOpacity>
                                     ) : null}
                                 </View>
-                                <View style={[styles.avatar, { borderColor: c.icon, backgroundColor: c.background }]}>
-                                    {/* TODO: replace with actual profile avatar if available */}
-                                    <Ionicons name="person" size={18} color={c.icon} />
-                                </View>
+                                {item.sender === 'me' ? (
+                                    <View style={[styles.avatar, { borderColor: c.icon, backgroundColor: c.background }]}>
+                                        <Ionicons name="person" size={18} color={c.icon} />
+                                    </View>
+                                ) : null}
                             </View>
                         )}
                     />
@@ -282,8 +405,8 @@ export default function TabThreeScreen() {
                             onSubmitEditing={handleSend}
                             blurOnSubmit={false}
                         />
-                        <TouchableOpacity style={[styles.sendButton, { backgroundColor: c.tint }]} onPress={handleSend} accessibilityLabel="Send message">
-                            <ThemedText style={[{ color: c.buttonText }]}>Send</ThemedText>
+                        <TouchableOpacity style={[styles.sendButton, { backgroundColor: c.tint }]} onPress={handleSend} accessibilityLabel="Send message" disabled={isSending}>
+                            <ThemedText style={[{ color: c.buttonText }]}>{isSending ? '...' : 'Send'}</ThemedText>
                         </TouchableOpacity>
                     </View>
                 </ThemedView>
