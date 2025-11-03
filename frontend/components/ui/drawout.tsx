@@ -3,22 +3,21 @@ import {
   View,
   StyleSheet,
   TouchableOpacity,
-  Text,
   Animated,
   Dimensions,
   Pressable,
+  Button,
 } from "react-native";
 import { Colors } from "@/constants/theme";
 
-const TABS = ["hi", "crayon", "pencil"];
-
 export function Drawout({
   triggerPosition,
+  clearChat,
 }: {
   triggerPosition?: { top: number; left: number };
+  clearChat?: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState("hi");
   const screenWidth = Dimensions.get("window").width;
   const panelWidth = Math.min(260, screenWidth * 0.8);
   const slideAnim = useState(new Animated.Value(-panelWidth))[0];
@@ -70,26 +69,12 @@ export function Drawout({
         ]}
         pointerEvents={open ? "auto" : "none"}
       >
-        <View style={styles.tabRow}>
-          {TABS.map((tab) => (
-            <TouchableOpacity
-              key={tab}
-              style={[styles.tab, selected === tab && styles.tabSelected]}
-              onPress={() => setSelected(tab)}
-            >
-              <Text
-                style={[
-                  styles.tabText,
-                  selected === tab && styles.tabTextSelected,
-                ]}
-              >
-                {tab}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
         <View style={styles.panelContent}>
-          <Text style={styles.panelText}>{selected} panel</Text>
+          <Button
+            title="Clear"
+            onPress={clearChat}
+            accessibilityLabel="Clear chat feed"
+          />
         </View>
       </Animated.View>
     </View>

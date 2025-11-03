@@ -62,6 +62,11 @@ export default function TabThreeScreen() {
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
   }
 
+  // Clear chat function
+  function clearChat() {
+    setMessages([]);
+  }
+
   // Auto-scroll to bottom when keyboard opens so the input stays visible
   useEffect(() => {
     const eventName =
@@ -199,7 +204,7 @@ export default function TabThreeScreen() {
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
         <ThemedView style={styles.container}>
-          <Drawout triggerPosition={drawoutPosition} />
+          <Drawout triggerPosition={drawoutPosition} clearChat={clearChat} />
           <FlatList
             ref={listRef}
             style={styles.list}
