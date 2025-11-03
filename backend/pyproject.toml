@@ -9,3 +9,8 @@ dependencies = [
 ]
 
 [tool.uv]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: tests that require live external services such as Ollama",
+]
