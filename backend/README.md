@@ -26,3 +26,151 @@ The translation agent reads the following environment variables (all optional):
 - `NLIP_TRANSLATION_DEFAULT_LOCALE`: Locale assumed when detection fails (default `en`).
 
 The translation agent targets the `llama3.1` model by default; pass `model="..."` when constructing `OllamaTranslationAgent` if you need to pick a different model.
+
+### Audio / Sound Agent
+
+Incoming NLIP audio submessages are routed to Whisper for ASR and then optionally
+re-translated through Ollama so the final response matches the user's locale.
+
+Environment variables for the sound agent (all optional):
+
+- `WHISPER_URL`: Base URL for the Whisper HTTP server (default `http://localhost:9002`).
+- `WHISPER_MODEL`: Model name sent to Whisper (default `large-v3`).
+- `WHISPER_TIMEOUT`: Seconds to wait for Whisper before failing (default `90`).
+
+### Local Whisper Server (openai-whisper)
+
+Instead of relying on the `whisper.cpp` Docker image, we now reuse the official
+openai-whisper package directly. The helper script `start-whisper.sh` wraps a
+small FastAPI server (`backend/scripts/whisper_server.py`) that mimics
+OpenAI's `POST /v1/audio/transcriptions` endpoint.
+
+1. **Install the Python package and system dependencies**
+
+   - Install ffmpeg (required by Whisper):
+
+     ```bash
+     # Ubuntu / Debian
+     sudo apt update && sudo apt install ffmpeg
+
+     # Arch Linux
+     sudo pacman -S ffmpeg
+
+     # macOS (Homebrew)
+     brew install ffmpeg
+
+     # Windows (Chocolatey)
+     choco install ffmpeg
+
+     # Windows (Scoop)
+     scoop install ffmpeg
+     ```
+
+   - Install the Python deps (includes `openai-whisper` and PyTorch):
+     ```bash
+     pip install -r backend/requirements.txt
+     ```
+     (If you prefer managing dependencies manually, run `pip install -U openai-whisper`
+     as described in the official Whisper README.)
+
+2. **Start the local Whisper server**
+
+   ```bash
+   bash start-whisper.sh --model large-v3 --port 9002
+   ```
+
+   Flags:
+
+   - `--model`: any model supported by Whisper (`tiny`, `base`, `small`, `medium`,
+     `large`, `large-v2`, `large-v3`, or `turbo`). Prefixes like `whisper-large-v3`
+     are also accepted for compatibility with existing configs.
+   - `--device`: optional torch device override (e.g. `--device cuda`).
+   - `--port`: HTTP port to bind (default `9002`).
+
+3. **Smoke-test the endpoint**
+   ```bash
+   curl -X POST http://localhost:9002/v1/audio/transcriptions \
+     -F "model=large-v3" \
+     -F "audio=@backend/tests/speed-talking.wav"
+   ```
+   You should receive JSON containing the transcript, language, and segments.
+
+Leave the server running in the background while you exercise the backend—the
+sound agent simply issues HTTP requests against `WHISPER_URL`.
+
+### Running Locally
+
+1. **Install dependencies**
+
+   ```bash
+   cd backend
+   python -m venv .venv && source .venv/bin/activate
+   pip install -r requirements.txt
+   ```
+
+2. **Start Ollama for translation**
+
+   ```bash
+   ollama serve &
+   ollama pull llama3.1
+   ```
+
+   Set `OLLAMA_URL` if your server listens somewhere other than `http://localhost:11434`.
+
+3. **Launch the Whisper sidecar** (see the commands in the Audio/Sound Agent section above). Leave this container running on `http://localhost:9002`.
+
+4. **Run the FastAPI app**
+
+   ```bash
+   uvicorn backend.app.supervisor:app --reload --port 8000
+   ```
+
+   Relevant environment variables:
+
+   - `OLLAMA_URL`, `NLIP_TRANSLATION_PIVOT_LOCALE`, `NLIP_TRANSLATION_DEFAULT_LOCALE`
+   - `WHISPER_URL`, `WHISPER_MODEL`, `WHISPER_TIMEOUT`
+
+5. **Exercise the NLIP endpoint**
+
+   ```bash
+   curl -X POST http://localhost:8000/nlip/ \
+     -H "Content-Type: application/json" \
+     -d '{ "format": "text", "content": "hola", "target_language": "en" }'
+   ```
+
+   For audio payloads, base64-encode the media into an `audio` submessage and post the same way.
+
+6. **Run the test suite**
+   ```bash
+   pytest backend/tests
+   ```
+   The unit tests stub Whisper/Ollama, so they pass without the external services, but integration tests (marked `@pytest.mark.integration`) expect live servers.
+
+### Running via Docker Compose
+
+1. **Start the stack**
+
+   ```bash
+   docker compose up --build
+   ```
+
+2. **Launch Whisper in a separate terminal on the host**
+
+   ```bash
+   bash start-whisper.sh
+   ```
+
+   Leave that terminal open; the container keeps running until you `Ctrl+C`.
+
+3. **Point the backend container at the host-side Whisper server**
+
+   - Set `WHISPER_URL=http://host.docker.internal:9002` in your Compose env.
+   - On Linux, add `extra_hosts: ["host.docker.internal:host-gateway"]` so the container can resolve the host gateway.
+
+4. **Test sound agent with given WAV of someone talking**
+   ```bash
+   curl -X POST http://localhost:9002/v1/audio/transcriptions \
+     -F "model=large-v3" \
+     -F "audio=@backend/tests/speed-talking.wav"
+   ```
+   When you see a transcript, post the same file inside an NLIP request to the compose-hosted backend to exercise the full ASR → translation path.

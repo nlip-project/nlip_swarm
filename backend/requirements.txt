@@ -4,3 +4,5 @@ uvicorn[standard]
 fastapi
 pydantic
 langdetect
+python-multipart
+openai-whisper>=20231117

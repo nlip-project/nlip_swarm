@@ -69,6 +69,7 @@ nlip_swarm/
    ```bash
    uvicorn app.api:app --reload --port 8000
    ```
+   Refer to `backend/README.md` for detailed backend, translation, and sound-agent instructions (including Whisper testing).
 
 ## Contributors
 
