@@ -251,21 +251,51 @@ def _process_image_payload(message: nlip.NLIP_Message) -> nlip.NLIP_Message:
     For each image, call the image agent with an optional translated prompt.
     Return a NLIP_Message containing structured results and a human-readable analysis.
     """
-    # Determine prompt/instruction (prefer labeled prompt)
-    prompt_text = None
-    structured_instruction = None
+    def _extract_prompt_text(content: Any) -> Optional[str]:
+        if isinstance(content, str) and content.strip():
+            return content
+        if isinstance(content, dict):
+            for key in (("prompt",) + TEXT_KEYS):
+                value = content.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value
+        return None
+
+    # Determine prompt/instruction (prefer labeled prompt) and allow top-level messages
+    prompt_text: Optional[str] = None
+    structured_instruction: Optional[Any] = None
+    top_format = getattr(message, "format", None)
+    top_label = getattr(message, "label", None)
+
+    if top_format == nlip.AllowedFormats.structured or (
+        isinstance(top_format, str) and top_format.lower() == "structured"
+    ):
+        structured_instruction = message.content
+    else:
+        if isinstance(top_label, str) and top_label.lower() == "prompt":
+            prompt_text = _extract_prompt_text(message.content)
+        if prompt_text is None and (
+            top_format == nlip.AllowedFormats.text
+            or (isinstance(top_format, str) and top_format.lower() == "text")
+        ):
+            prompt_text = _extract_prompt_text(message.content)
+
     for sub in (message.submessages or []):
         if getattr(sub, "label", None) and sub.label and sub.label.lower() in ("prompt") and sub.format == nlip.AllowedFormats.text:
-            prompt_text = sub.content
-            break
+            extracted = _extract_prompt_text(sub.content)
+            if extracted:
+                prompt_text = extracted
+                break
     # fallback: first text submessage
     if not prompt_text:
         for sub in (message.submessages or []):
             if sub.format == nlip.AllowedFormats.text:
-                prompt_text = sub.content
-                break
+                extracted = _extract_prompt_text(sub.content)
+                if extracted:
+                    prompt_text = extracted
+                    break
     # structured instruction fallback
-    if not prompt_text:
+    if not prompt_text and structured_instruction is None:
         for sub in (message.submessages or []):
             if sub.format == nlip.AllowedFormats.structured:
                 structured_instruction = sub.content
