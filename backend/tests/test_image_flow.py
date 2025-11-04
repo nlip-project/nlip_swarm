@@ -1,9 +1,6 @@
-# backend/tests/run_image_flow.py
+# backend/tests/test_image_flow.py
 from backend.app.supervisor import process_nlip  # for monkeypatching
 from nlip_sdk import nlip
-import base64
-
-
 def mock_recognize_image(self, encodedImage: str, prompt: str) -> str:
     payload = nlip.NLIP_Factory.create_binary(
         content=encodedImage,

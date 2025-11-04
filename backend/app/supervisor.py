@@ -209,7 +209,7 @@ def _extract_text(message: nlip.NLIP_Message) -> Optional[str]:
         sub_fmt = getattr(sub, "format", None)
         if sub_fmt == nlip.AllowedFormats.binary or (isinstance(sub_fmt, str) and sub_fmt.lower() == "binary"):
             desc = None
-            # desc = _describe_image_from_content(sub.content)
+            desc = _describe_image_from_content(sub.content)
             if desc:
                 parts.append(desc)
 
@@ -281,7 +281,7 @@ def _process_image_payload(message: nlip.NLIP_Message) -> nlip.NLIP_Message:
             prompt_text = _extract_prompt_text(message.content)
 
     for sub in (message.submessages or []):
-        if getattr(sub, "label", None) and sub.label and sub.label.lower() in ("prompt") and sub.format == nlip.AllowedFormats.text:
+        if sub.label and sub.label.lower() in ("prompt") and sub.format == nlip.AllowedFormats.text:
             extracted = _extract_prompt_text(sub.content)
             if extracted:
                 prompt_text = extracted
@@ -399,6 +399,7 @@ def _process_image_payload(message: nlip.NLIP_Message) -> nlip.NLIP_Message:
                     try:
                         text_rep = _translator.translate(text_rep, source_lang)
                     except TranslationError:
+                        # If translation fails, fall back to the original text.
                         pass
                 resp.add_submessage(
                     nlip.NLIP_SubMessage(
@@ -416,6 +417,7 @@ def _process_image_payload(message: nlip.NLIP_Message) -> nlip.NLIP_Message:
                 try:
                     text_out = _translator.translate(text_out, source_lang)
                 except TranslationError:
+                    # If translation fails, fall back to the original text output.
                     pass
             resp.add_submessage(
                 nlip.NLIP_SubMessage(

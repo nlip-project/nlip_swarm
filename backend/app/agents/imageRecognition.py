@@ -23,7 +23,7 @@ class LlavaImageRecognitionAgent:
             "model": self.model,
             "prompt": prompt or "Describe the content of this image in detail.",
             "images": [encodedImage],
-            "stream": False, # No streaming for simplicity right now, dont' have to deal with async generator
+            "stream": False, # No streaming for simplicity right now, don't have to deal with async generator
         }
 
         try:
@@ -47,7 +47,8 @@ class LlavaImageRecognitionAgent:
 # imageDescription = LlavaImageRecognitionAgent().recognize_image("./test.jpg")
 # print("Image Description:", imageDescription.get("response"))
     def test_image_recognition(self, image_path: str, prompt: str):
-        encodedImage = base64.b64encode(open(image_path, "rb").read()).decode("utf-8")
+        with open(image_path, "rb") as f:
+            encodedImage = base64.b64encode(f.read()).decode("utf-8")
         imageDescription = LlavaImageRecognitionAgent().recognize_image(encodedImage, prompt)
         print("Image Description:", imageDescription.get("response")) 
 
