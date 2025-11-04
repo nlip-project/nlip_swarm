@@ -42,3 +42,6 @@ websockets==15.0.1
 nlip-sdk
 python-multipart
 openai-whisper>=20231117
+nlip_sdk
+langchain
+langchain-ollama
