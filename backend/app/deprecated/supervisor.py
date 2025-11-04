@@ -326,7 +326,9 @@ def _process_image_payload(message: nlip.NLIP_Message) -> nlip.NLIP_Message:
 
     # iterate images: include top-level image as an item first
     images: List[Tuple[str, str]] = []  # list of (label, encoded)
-    if (getattr(message, "format", None) == nlip.AllowedFormats.binary or (isinstance(getattr(message, "format", None), str) and getattr(message, "format", None).lower() == "binary")) and isinstance(getattr(message, "subformat", None), str) and getattr(message, "subformat", None).lower().startswith("image"):
+    msg_format = getattr(message, "format", None)
+    msg_subformat = getattr(message, "subformat", None)
+    if (msg_format == nlip.AllowedFormats.binary or (isinstance(msg_format, str) and msg_format.lower() == "binary")) and isinstance(msg_subformat, str) and msg_subformat.lower().startswith("image"):
         enc = _get_encoded_from_content(message.content)
         if enc:
             images.append((getattr(message, "label", "image"), enc))
