@@ -1,21 +1,61 @@
+import app.routes.health as health
+import app.routes.nlip as nlip
+import asyncio
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import pytest
+from typing import Any, Dict, Optional
 
-from backend.app import supervisor
-from backend.app.api import setup_server
+from backend import app
+
+class DummySession:
+    def __init__(self, response: Optional[Dict[str, Any]] = None, raise_exc: Optional[Exception] = None):
+        self.raise_exc = raise_exc
+        self.started = False
+        self.stopped = False
+        self.response = response or {"status": "ok"}
+        self.correlated_calls = []
+
+    def start(self):
+        self.started = True
+
+    def stop(self):
+        self.stopped = True
+
+    async def correlated_execute(self, message):
+        self.correlated_calls.append(message)
+        if self.raise_exc:
+            raise self.raise_exc
+        return self.response
+    
+class DummyClientApp:
+    def __init__(self, session: DummySession):
+        self._session = session
+        self.added = []
+        self.removed = []
+
+    def create_session(self):
+        return self._session
+    
+    def add_session(self, session):
+        self.added.append(session)
+
+    def remove_session(self, session):
+        self.removed.append(session)
 
 
-class DummyTranslator:
-    def __init__(self):
-        self.calls = []
+    def build_with_dummy(self, session: DummySession) -> FastAPI:
+        app = FastAPI()
+        app.include_router(health.router, prefix="/health")
+        app.include_router(nlip.router, prefix="/nlip")
+        app.state.client_app = DummyClientApp(session)
+        return app
 
-    def translate(self, text: str, target_locale: str) -> str:
-        self.calls.append((text, target_locale))
-        if target_locale == "en":
-            return "the crop looks healthy"
-        if target_locale == "lg":
-            assert text == "the crop looks healthy"
-            return "ebirime birabika bulungi"
-        return text
+def test_health_check():
+    client = TestClient(app)
+    resp = client.get("/health/")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok"}
 
 """
 def test_process_endpoint_translates_through_pivot(monkeypatch):

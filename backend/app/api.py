@@ -11,8 +11,11 @@ import inspect
 
 logger = logging.getLogger('uvicorn.error')
 
-class NLIP_Session:
+"""
+A NLIP session, basically start and stop of a conversation/request.
+"""
 
+class NLIP_Session:
     def set_correlator(self):
         self.correlator = secrets.token_urlsafe()
 
@@ -57,6 +60,10 @@ class NLIP_Session:
     def get_logger(self):
         return logger
     
+"""
+NLIP Application base class.
+"""
+
 class NLIP_Application:
     async def startup(self):
         raise err.UnImplementedError(f"startup", self.__class__.__name__)
