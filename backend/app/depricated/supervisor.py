@@ -4,7 +4,7 @@ from typing import List, Optional, Tuple, Dict, Any
 from langdetect import detect, LangDetectException
 
 from nlip_sdk import nlip
-from .agents.translation import OllamaTranslationAgent, TranslationError
+from ..agents.translation import OllamaTranslationAgent, TranslationError
 from .api import SafeApplication, NLIP_Session, setup_server
 
 PIVOT_LOCALE = os.getenv("NLIP_TRANSLATION_PIVOT_LOCALE", "en")
