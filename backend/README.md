@@ -24,6 +24,57 @@ English pivot so downstream agents can reason in a single language:
 This keeps the internal prompts consistent while farmers in Uganda (or any
 other locale) interact with the chatbot in their preferred language.
 
+## Request Example:
+{
+  "messagetype": "request",
+  "format": "generic",
+  "subformat": "task.translate.fr",
+  "label": "translate_req",
+  "content": "hello world"
+}
+
+### Response: 
+{
+    "messagetype": "response",
+    "format": "generic",
+    "subformat": "nlip.bundle",
+    "content": "ok",
+    "label": "translate_req",
+    "submessages": [
+        {
+            "format": "text",
+            "subformat": "english",
+            "content": "bonjour le monde",
+            "label": "translate_req"
+        }
+    ]
+}
+
+### Request with Multiple SubMessages
+{
+  "messagetype": "request",
+  "format": "generic",
+  "subformat": "nlip.bundle",
+  "content": "batch",
+  "submessages": [
+    {
+      "format": "generic",
+      "subformat": "task.translate.*",
+      "label": "line1",
+      "content": "tests de détection automatique"
+    },
+    {
+      "format": "generic",
+      "subformat": "task.translate.es",
+      "label": "line2",
+      "content": "Testing english to specific language"
+    }
+  ]
+}
+
+### Bundled Response
+
+
 #### Configuration
 
 The translation agent reads the following environment variables (all optional):
