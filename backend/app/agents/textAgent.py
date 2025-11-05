@@ -1,9 +1,9 @@
 import os
+from typing import Optional
 import httpx
 
 from nlip_sdk import nlip
 from .base import Agent
-from typing import Any as NLIP_Message, Optional
 
 class LLamaTextAgent(Agent):
     """
@@ -22,7 +22,7 @@ class LLamaTextAgent(Agent):
     
     
 
-    def handle(self, message: NLIP_Message) -> NLIP_Message:
+    def handle(self, message: nlip.NLIP_Message) -> nlip.NLIP_Message:
         text = ""
         if message.format == "text" and message.content is not None:
             text = message.content
@@ -46,7 +46,7 @@ class LLamaTextAgent(Agent):
             label="llama_response"
         )
     
-    def promptResponse(self, prompt: str) -> NLIP_Message:
+    def promptResponse(self, prompt: str) -> nlip.NLIP_Message:
         # Generate a response based on the prompt and context
         # context = {}  # Define context as needed
         url = f"{self.base_url}/api/generate"
