@@ -86,23 +86,32 @@ async def route(
             raw_out = await llm.ainvoke(sys_prompt)
         else:
             raw_out = await llm.invoke(sys_prompt)
-    except Exception as e:
-        fallback = agent_pool[0]
-        return fallback
-    
-    if hasattr(raw_out, "content"):
-        raw_text = raw_out.content
-    else:
-        raw_text = str(raw_out)
+    except Exception:
+        return agent_pool[0]
 
+    raw_text = raw_out.content if hasattr(raw_out, "content") else str(raw_out)
     data = _extract_json_safetly(raw_text)
-    agent_name = data.get("agent_name")
+    agent_name = data.get("agent_name") if isinstance(data, dict) else None
 
     if not agent_name or agent_name not in agent_names:
-        fallback = agent_pool[0]
-        return fallback
-    for a in agent_pool:
-        if a.name == agent_name:
-            return a
-    fallback = agent_pool[0]
-    return fallback
+        retry_prompt = (
+            sys_prompt
+            + "\n\nREMINDER: Return STRICT JSON with exactly keys \"agent_name\" and \"reasoning\". No prose."
+        )
+        try:
+            if hasattr(llm, "ainvoke"):
+                raw_out2 = await llm.ainvoke(retry_prompt)
+            else:
+                raw_out2 = await llm.invoke(retry_prompt)
+            raw_text2 = raw_out2.content if hasattr(raw_out2, "content") else str(raw_out2)
+            data2 = _extract_json_safetly(raw_text2)
+            agent_name2 = data2.get("agent_name") if isinstance(data2, dict) else None
+            agent_name = agent_name2 if agent_name2 in agent_names else None
+        except Exception:
+            agent_name = None
+
+    if agent_name and agent_name in agent_names:
+        for a in agent_pool:
+            if a.name == agent_name:
+                return a
+    return agent_pool[0]
