@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
-from backend.app import supervisor
-from backend.app.api import setup_server
+from backend.app.depricated import supervisor
+from backend.app.depricated.api import setup_server
 
 
 class DummyTranslator:

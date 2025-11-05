@@ -4,8 +4,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from nlip_sdk.nlip import NLIP_Message
 from nlip_sdk import errors as err
-from .routes.nlip import router as nlip_router
-from .routes.health import router as health_router
+from ..routes.nlip import router as nlip_router
+from ..routes.health import router as health_router
 import secrets
 import inspect
 
