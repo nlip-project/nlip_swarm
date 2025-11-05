@@ -1,27 +1,43 @@
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Ionicons } from '@expo/vector-icons';
-import * as DocumentPicker from 'expo-document-picker';
-import * as ImagePicker from 'expo-image-picker';
-import { useEffect, useRef, useState } from 'react';
-import { Alert, FlatList, Image, Keyboard, KeyboardAvoidingView, Linking, Platform, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { ThemedText } from "@/components/themed-text";
+import { ThemedView } from "@/components/themed-view";
+import { Drawout } from "@/components/ui/drawout";
+import { Colors } from "@/constants/theme";
+import { useColorScheme } from "@/hooks/use-color-scheme";
+import { Ionicons } from "@expo/vector-icons";
+import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
+import { useEffect, useRef, useState } from "react";
+import {
+    Alert,
+    FlatList,
+    Image,
+    Keyboard,
+    KeyboardAvoidingView,
+    Linking,
+    Platform,
+    StyleSheet,
+    TextInput,
+    TouchableOpacity,
+
+    View,
+    Dimensions,
+} from "react-native";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NLIPClient from '../nlipClient';
 
 export default function TabThreeScreen() {
-    const theme = useColorScheme() ?? 'light';
+    const theme = useColorScheme() ?? "light";
     const c = Colors[theme];
     const insets = useSafeAreaInsets();
     const isWeb = Platform.OS === 'web';
-    const [text, setText] = useState('');
+    const [text, setText] = useState("");
     const [isSending, setIsSending] = useState(false);
     const [imageUri, setImageUri] = useState<string | null>(null);
     const [fileUri, setFileUri] = useState<string | null>(null);
     const [fileName, setFileName] = useState<string | null>(null);
     const [fileSize, setFileSize] = useState<number | null>(null);
     const [fileType, setFileType] = useState<string | null>(null);
+    const [oldConversations, setOldConversations] = useState<Message[][]>([]);
     type Message = {
         id: string;
         text?: string;
@@ -31,10 +47,16 @@ export default function TabThreeScreen() {
         fileSize?: number | null;
         fileType?: string | null;
         timestamp: number;
-        sender: 'me' | 'other'
+        sender: "me" | "other";
     };
     const [messages, setMessages] = useState<Message[]>([]);
     const listRef = useRef<FlatList<Message>>(null);
+
+    const screen = Dimensions.get("window");
+    const drawoutPosition = {
+        top: screen.height * 0.08,
+        left: screen.width * 0.04,
+    };
 
     // Platform-aware base URL. For web we can use the current origin. For Android emulator use 10.0.2.2 to reach host machine.
     // For a physical device set this to your machine IP (e.g. 'http://192.168.1.10:8000').
@@ -48,15 +70,33 @@ export default function TabThreeScreen() {
     function formatFileSize(bytes: number): string {
         if (bytes < 1024) return `${bytes} B`;
         if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-        if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+        if (bytes < 1024 * 1024 * 1024)
+            return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
         return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+    }
+
+    // Clear chat function
+    function clearChat() {
+        if (messages.length > 0) {
+            setOldConversations((prev) => [...prev, messages]);
+            setMessages([]);
+        }
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    function onRestoreConversation(idx: number) {
+        setMessages(oldConversations[idx]);
+        // Do not remove the conversation from oldConversations
     }
 
     // Auto-scroll to bottom when keyboard opens so the input stays visible
     useEffect(() => {
-        const eventName = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+        const eventName =
+            Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
         const sub = Keyboard.addListener(eventName, () => {
-            requestAnimationFrame(() => listRef.current?.scrollToOffset({ offset: 0, animated: true }));
+            requestAnimationFrame(() =>
+                listRef.current?.scrollToOffset({ offset: 0, animated: true })
+            );
         });
         return () => sub.remove();
     }, []);
@@ -64,14 +104,19 @@ export default function TabThreeScreen() {
     // Auto-scroll when an image is attached (from camera or library)
     useEffect(() => {
         if (imageUri) {
-            requestAnimationFrame(() => listRef.current?.scrollToOffset({ offset: 0, animated: true }));
+            requestAnimationFrame(() =>
+                listRef.current?.scrollToOffset({ offset: 0, animated: true })
+            );
         }
     }, [imageUri]);
 
     async function openCamera() {
         const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        if (status !== 'granted') {
-            Alert.alert('Permission required', 'Camera permission is required to take a photo.');
+        if (status !== "granted") {
+            Alert.alert(
+                "Permission required",
+                "Camera permission is required to take a photo."
+            );
             return;
         }
 
@@ -84,14 +129,17 @@ export default function TabThreeScreen() {
             const uri = result.assets[0].uri;
             setImageUri(uri);
             // TODO: upload the image or attach it to the chat message
-            console.log('Image picked:', uri);
+            console.log("Image picked:", uri);
         }
     }
 
     async function pickImageFromLibrary() {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-            Alert.alert('Permission required', 'Photo library permission is required to choose a photo.');
+        if (status !== "granted") {
+            Alert.alert(
+                "Permission required",
+                "Photo library permission is required to choose a photo."
+            );
         }
 
         const result = await ImagePicker.launchImageLibraryAsync({
@@ -105,24 +153,24 @@ export default function TabThreeScreen() {
             const uri = result.assets[0].uri;
             setImageUri(uri);
             // TODO: upload the image or attach it to the chat message
-            console.log('Image chosen:', uri);
+            console.log("Image chosen:", uri);
         }
     }
 
     function handleAttachPress() {
         Keyboard.dismiss();
-        Alert.alert('Attach', 'Choose an option', [
-            { text: 'Take Photo', onPress: () => void openCamera() },
-            { text: 'Choose Photo', onPress: () => void pickImageFromLibrary() },
-            { text: 'Choose File', onPress: () => void pickDocument() },
-            { text: 'Cancel', style: 'cancel' },
+        Alert.alert("Attach", "Choose an option", [
+            { text: "Take Photo", onPress: () => void openCamera() },
+            { text: "Choose Photo", onPress: () => void pickImageFromLibrary() },
+            { text: "Choose File", onPress: () => void pickDocument() },
+            { text: "Cancel", style: "cancel" },
         ]);
     }
 
     async function pickDocument() {
         try {
             const result = await DocumentPicker.getDocumentAsync({
-                type: '*/*',
+                type: "*/*",
                 copyToCacheDirectory: true,
             });
 
@@ -132,15 +180,15 @@ export default function TabThreeScreen() {
                 setFileName(file.name);
                 setFileSize(file.size ?? null);
                 setFileType(file.mimeType ?? null);
-                console.log('File picked:', file.name, file.uri);
+                console.log("File picked:", file.name, file.uri);
             }
         } catch (err) {
-            console.error('Error picking document:', err);
-            Alert.alert('Error', 'Failed to pick document');
+            console.error("Error picking document:", err);
+            Alert.alert("Error", "Failed to pick document");
         }
     }
 
-    async function sendToBackend(inputText: string, options?: { imageUri?: string | null; fileUri?: string | null; fileName?: string | null; fileType?: string | null; }) : Promise<string> {
+    async function sendToBackend(inputText: string, options?: { imageUri?: string | null; fileUri?: string | null; fileName?: string | null; fileType?: string | null; }): Promise<string> {
         console.log('[sendToBackend] Delegating to NLIPClient with text:', inputText, 'options:', options);
         try {
             if (options?.imageUri) {
@@ -169,7 +217,7 @@ export default function TabThreeScreen() {
             console.log('[handleSend] No content to send, returning early');
             return;
         }
-        
+
         console.log('[handleSend] Creating message with trimmed text:', trimmed);
         const newMessage: Message = {
             id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -182,22 +230,22 @@ export default function TabThreeScreen() {
             timestamp: Date.now(),
             sender: 'me',
         };
-        
+
         console.log('[handleSend] Adding message to list:', newMessage);
         // Prepend for inverted FlatList so newest appears at the visual bottom
         setMessages((prev) => [newMessage, ...prev]);
-    // capture attachments locally before clearing UI state
-    const localImage = imageUri;
-    const localFile = fileUri;
-    const localFileName = fileName;
-    const localFileType = fileType;
+        // capture attachments locally before clearing UI state
+        const localImage = imageUri;
+        const localFile = fileUri;
+        const localFileName = fileName;
+        const localFileType = fileType;
 
-    setText('');
-    setImageUri(null);
-    setFileUri(null);
-    setFileName(null);
-    setFileSize(null);
-    setFileType(null);
+        setText('');
+        setImageUri(null);
+        setFileUri(null);
+        setFileName(null);
+        setFileSize(null);
+        setFileType(null);
         Keyboard.dismiss();
         requestAnimationFrame(() => {
             listRef.current?.scrollToOffset({ offset: 0, animated: true });
@@ -234,13 +282,15 @@ export default function TabThreeScreen() {
     return (
         <KeyboardAvoidingView
             style={styles.flex1}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+        >
             {/* Use a non-intercepting container so scrolling gestures reach the FlatList on web */}
             <View style={styles.flex1} pointerEvents="box-none">
                 <ThemedView style={styles.container}>
                     {/* Top spacer to avoid notch/camera area on newer iPhones (e.g. iPhone 16 Pro) */}
                     <View pointerEvents="none" style={[styles.topSpacer, { height: (insets.top || 0) + 12 }]} />
+                    <Drawout triggerPosition={drawoutPosition} clearChat={clearChat} />
                     <FlatList
                         ref={listRef}
                         style={styles.list}
@@ -252,10 +302,12 @@ export default function TabThreeScreen() {
                         {...(!isWeb ? { maintainVisibleContentPosition: { minIndexForVisible: 0 } } : {})}
                         contentContainerStyle={[{ flexGrow: 1 }, messages.length === 0 ? styles.emptyListContainer : undefined]}
                         renderItem={({ item }) => (
-                            <View style={[
-                                styles.messageRow,
-                                item.sender === 'me' ? styles.rowMe : styles.rowOther,
-                            ]}>
+                            <View
+                                style={[
+                                    styles.messageRow,
+                                    item.sender === "me" ? styles.rowMe : styles.rowOther,
+                                ]}
+                            >
                                 {item.sender === 'other' ? (
                                     <View style={[styles.avatar, { borderColor: c.icon, backgroundColor: c.background }]}>
                                         <Ionicons name="person" size={18} color={c.icon} />
@@ -265,22 +317,33 @@ export default function TabThreeScreen() {
                                     style={[
                                         styles.bubble,
                                         {
-                                            backgroundColor: item.sender === 'me' ? c.messageMeBg : c.messageOtherBg,
+                                            backgroundColor:
+                                                item.sender === "me" ? c.messageMeBg : c.messageOtherBg,
                                             borderColor: c.icon,
                                             borderWidth: 1,
                                         },
                                     ]}
                                 >
                                     {item.text ? (
-                                        <ThemedText style={[
-                                            styles.bubbleText,
-                                            { color: item.sender === 'me' ? c.messageMeText : c.messageOtherText },
-                                        ]}>
+                                        <ThemedText
+                                            style={[
+                                                styles.bubbleText,
+                                                {
+                                                    color:
+                                                        item.sender === "me"
+                                                            ? c.messageMeText
+                                                            : c.messageOtherText,
+                                                },
+                                            ]}
+                                        >
                                             {item.text}
                                         </ThemedText>
                                     ) : null}
                                     {item.imageUri ? (
-                                        <Image source={{ uri: item.imageUri }} style={styles.bubbleImage} />
+                                        <Image
+                                            source={{ uri: item.imageUri }}
+                                            style={styles.bubbleImage}
+                                        />
                                     ) : null}
                                     {item.fileUri ? (
                                         <TouchableOpacity
@@ -288,25 +351,48 @@ export default function TabThreeScreen() {
                                             onPress={() => {
                                                 if (item.fileUri) {
                                                     void Linking.openURL(item.fileUri).catch((err) => {
-                                                        console.error('Failed to open file:', err);
-                                                        Alert.alert('Error', 'Could not open file');
+                                                        console.error("Failed to open file:", err);
+                                                        Alert.alert("Error", "Could not open file");
                                                     });
                                                 }
                                             }}
                                         >
-                                            <Ionicons name="document" size={24} color={item.sender === 'me' ? c.messageMeText : c.messageOtherText} />
+                                            <Ionicons
+                                                name="document"
+                                                size={24}
+                                                color={
+                                                    item.sender === "me"
+                                                        ? c.messageMeText
+                                                        : c.messageOtherText
+                                                }
+                                            />
                                             <View style={styles.fileInfo}>
-                                                <ThemedText style={[
-                                                    styles.fileName,
-                                                    { color: item.sender === 'me' ? c.messageMeText : c.messageOtherText },
-                                                ]}>
-                                                    {item.fileName || 'Unknown file'}
+                                                <ThemedText
+                                                    style={[
+                                                        styles.fileName,
+                                                        {
+                                                            color:
+                                                                item.sender === "me"
+                                                                    ? c.messageMeText
+                                                                    : c.messageOtherText,
+                                                        },
+                                                    ]}
+                                                >
+                                                    {item.fileName || "Unknown file"}
                                                 </ThemedText>
-                                                {item.fileSize !== null && item.fileSize !== undefined ? (
-                                                    <ThemedText style={[
-                                                        styles.fileSize,
-                                                        { color: item.sender === 'me' ? c.messageMeText : c.messageOtherText },
-                                                    ]}>
+                                                {item.fileSize !== null &&
+                                                    item.fileSize !== undefined ? (
+                                                    <ThemedText
+                                                        style={[
+                                                            styles.fileSize,
+                                                            {
+                                                                color:
+                                                                    item.sender === "me"
+                                                                        ? c.messageMeText
+                                                                        : c.messageOtherText,
+                                                            },
+                                                        ]}
+                                                    >
                                                         {formatFileSize(item.fileSize)}
                                                     </ThemedText>
                                                 ) : null}
@@ -314,11 +400,15 @@ export default function TabThreeScreen() {
                                         </TouchableOpacity>
                                     ) : null}
                                 </View>
-                                {item.sender === 'me' ? (
-                                    <View style={[styles.avatar, { borderColor: c.icon, backgroundColor: c.background }]}>
-                                        <Ionicons name="person" size={18} color={c.icon} />
-                                    </View>
-                                ) : null}
+                                <View
+                                    style={[
+                                        styles.avatar,
+                                        { borderColor: c.icon, backgroundColor: c.background },
+                                    ]}
+                                >
+                                    {/* TODO: replace with actual profile avatar if available */}
+                                    <Ionicons name="person" size={18} color={c.icon} />
+                                </View>
                             </View>
                         )}
                     />
@@ -326,14 +416,23 @@ export default function TabThreeScreen() {
                         <Image source={{ uri: imageUri }} style={styles.preview} />
                     ) : null}
                     {fileUri && fileName ? (
-                        <View style={[styles.filePreview, { backgroundColor: c.messageMeBg, borderColor: c.icon }]}>
+                        <View
+                            style={[
+                                styles.filePreview,
+                                { backgroundColor: c.messageMeBg, borderColor: c.icon },
+                            ]}
+                        >
                             <Ionicons name="document" size={32} color={c.messageMeText} />
                             <View style={styles.fileInfo}>
-                                <ThemedText style={[styles.fileName, { color: c.messageMeText }]}>
+                                <ThemedText
+                                    style={[styles.fileName, { color: c.messageMeText }]}
+                                >
                                     {fileName}
                                 </ThemedText>
                                 {fileSize !== null && fileSize !== undefined ? (
-                                    <ThemedText style={[styles.fileSize, { color: c.messageMeText }]}>
+                                    <ThemedText
+                                        style={[styles.fileSize, { color: c.messageMeText }]}
+                                    >
                                         {formatFileSize(fileSize)}
                                     </ThemedText>
                                 ) : null}
@@ -347,13 +446,26 @@ export default function TabThreeScreen() {
                                 }}
                                 accessibilityLabel="Remove file"
                             >
-                                <Ionicons name="close-circle" size={24} color={c.messageMeText} />
+                                <Ionicons
+                                    name="close-circle"
+                                    size={24}
+                                    color={c.messageMeText}
+                                />
                             </TouchableOpacity>
                         </View>
                     ) : null}
 
-                    <View style={[styles.inputRow, { backgroundColor: c.background, borderColor: c.icon }]}>
-                        <TouchableOpacity style={[styles.plusButton, { borderColor: c.icon }]} onPress={handleAttachPress} accessibilityLabel="Attach image">
+                    <View
+                        style={[
+                            styles.inputRow,
+                            { backgroundColor: c.background, borderColor: c.icon },
+                        ]}
+                    >
+                        <TouchableOpacity
+                            style={[styles.plusButton, { borderColor: c.icon }]}
+                            onPress={handleAttachPress}
+                            accessibilityLabel="Attach image"
+                        >
                             <ThemedText style={styles.plusText}>+</ThemedText>
                         </TouchableOpacity>
 
@@ -367,7 +479,7 @@ export default function TabThreeScreen() {
                             onSubmitEditing={handleSend}
                             blurOnSubmit={false}
                         />
-                        <TouchableOpacity style={[styles.sendButton, { backgroundColor: c.tint }]} onPress={handleSend} accessibilityLabel="Send message" disabled={isSending}>
+                        <TouchableOpacity style={[styles.sendButton, { backgroundColor: c.tint }]} onPress={handleSend} accessibilityLabel="Send message">
                             <ThemedText style={[{ color: c.buttonText }]}>{isSending ? '...' : 'Send'}</ThemedText>
                         </TouchableOpacity>
                     </View>
@@ -383,7 +495,7 @@ const styles = StyleSheet.create({
     },
     container: {
         flex: 1,
-        justifyContent: 'flex-start',
+        justifyContent: 'center',
         paddingBottom: 8,
         paddingTop: 8,
         gap: 8,
@@ -441,16 +553,16 @@ const styles = StyleSheet.create({
         borderRadius: 8,
         marginBottom: 8,
     },
-    topSpacer: {
-        backgroundColor: '#ffffff',
-        width: '100%'
-    },
     bubble: {
         maxWidth: '80%',
         borderRadius: 16,
         paddingHorizontal: 12,
         paddingVertical: 8,
         marginVertical: 4,
+    },
+    topSpacer: {
+        backgroundColor: '#ffffff',
+        width: '100%'
     },
     messageRow: {
         flexDirection: 'row',
