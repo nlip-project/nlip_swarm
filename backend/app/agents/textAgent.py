@@ -15,11 +15,15 @@ class LLamaTextAgent(Agent):
     - defines how to handle an NLIP message using the LLama model
 
     """
-
     def __init__(self, model: Optional[str] = None, base_url: Optional[str] = None):
+        super().__init__(
+            name="ollama_text",
+            capabilities=["task.text", "task.text.*"],
+            llm=None,
+            )
         self.base_url = (base_url or os.getenv("OLLAMA_URL", "http://localhost:11434")).rstrip("/")
         self.model = (model or os.getenv("OLLAMA_TEXT_MODEL", "llama3.2:3b"))
-    
+   
     
 
     def handle(self, message: nlip.NLIP_Message) -> nlip.NLIP_Message:
