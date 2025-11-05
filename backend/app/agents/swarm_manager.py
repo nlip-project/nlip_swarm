@@ -1,11 +1,12 @@
 from __future__ import annotations
 import asyncio
-from typing import List, cast
 from .base import Agent
-from ..registry import AgentRegistry
-from ..router import route
-from .translation import TranslationError, OllamaTranslationAgent
+from collections import defaultdict, deque
 from nlip_sdk.nlip import NLIP_Message, NLIP_Factory, AllowedFormats, NLIP_SubMessage
+from ..registry import AgentRegistry
+from ..router import route, build_router_prompt
+from .translation import TranslationError, OllamaTranslationAgent
+from typing import List, cast, Deque, List, Tuple, Dict
 
 class SwarmManager(Agent):
     """
@@ -31,8 +32,42 @@ class SwarmManager(Agent):
         self.router_llm = router_llm
         self.translator = translator
 
-    async def dispatch(self, subMessage: NLIP_Message) -> NLIP_Message:
-        agent = await route(self.registry, subMessage, self.router_llm)
+        self.sessions: Dict[str, Dict[str, object]] = defaultdict(
+            lambda: {"lang": "en", "history": deque(maxlen=20)}
+        )
+
+    def _get_conv_id(self, message: NLIP_Message) -> str:
+        conv = message.extract_conversation_token()
+        if not conv:
+            conv = message.label or "conv-default"
+        return conv
+    
+    def _push_history(self, conv_id: str, role: str, text: str):
+        if not text:
+            return
+        hist: Deque[Tuple[str, str]] = self.sessions[conv_id]["history"]  # type: ignore[assignment]
+        hist.append((role, text))
+
+    def _get_history_text(self, conv_id: str) -> str:
+        hist: Deque[Tuple[str, str]] = self.sessions[conv_id]["history"]  # type: ignore[assignment]
+        return "\n".join([f"{role.upper()}: {text}" for role, text in list(hist)[-8:]])
+    
+    def _remember_lang(self, conv_id: str, incoming_text: str):
+        try:
+            code = self.translator.detect_language(incoming_text or "") or "en"
+            self.sessions[conv_id]["lang"] = code
+        except TranslationError:
+            pass
+    
+    def _target_lang(self, conv_id: str) -> str:
+        return str(self.sessions[conv_id]["lang"])
+
+    async def dispatch(self, conv_id: str, subMessage: NLIP_Message, src_lang: str) -> NLIP_Message:
+        history_text = self._get_history_text(conv_id)
+        agent = await route(
+            self.registry, 
+            subMessage, self.router_llm, 
+            build_prompt=lambda names, task, sub: build_router_prompt(names, task, sub, history_text))
         try:
             return await agent.handle(subMessage)
         except Exception as e:
