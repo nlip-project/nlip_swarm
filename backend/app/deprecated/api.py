@@ -124,3 +124,4 @@ def create_app(client: NLIP_Application) -> FastAPI:
     
 def setup_server(client: NLIP_Application) -> FastAPI:
     return create_app(client)
+

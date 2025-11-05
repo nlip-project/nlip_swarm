@@ -1,5 +1,4 @@
 import sys
-from pathlib import Path
 import types
 import pytest
 from typing import Any, cast
@@ -8,13 +7,11 @@ import importlib
 
 
 def _install_stubs_before_import():
-    # Stub langdetect
     ld_mod = types.ModuleType("langdetect")
     setattr(ld_mod, "LangDetectException", Exception)
     setattr(ld_mod, "detect", lambda text: "en")
     sys.modules.setdefault("langdetect", ld_mod)
 
-    # Stub nlip_sdk.nlip
     nlip_pkg = types.ModuleType("nlip_sdk")
     nlip_sub = types.ModuleType("nlip_sdk.nlip")
 

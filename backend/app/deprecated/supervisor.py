@@ -18,6 +18,7 @@ _image_agent = LlavaImageRecognitionAgent()
 Actual message parsing logic.
 """
 
+
 def process_nlip(payload: nlip.NLIP_Message) -> nlip.NLIP_Message:
     """
     Process an incoming NLIP message using a translate-to-English-then-back
@@ -128,8 +129,6 @@ def _translate_messages_to_source(translated_messages: List[str], source_locale:
     """
     final_messages: List[nlip.NLIP_SubMessage] = []
     for text in translated_messages:
-        if not text:
-            continue
         if text.startswith("[translation-error]"):
             final_messages.append(
                 nlip.NLIP_SubMessage(
@@ -260,3 +259,4 @@ class TranslationApplication(SafeApplication):
         s.set_correlator()
         return s
 app = setup_server(TranslationApplication())
+
