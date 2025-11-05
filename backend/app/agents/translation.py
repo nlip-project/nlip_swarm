@@ -3,6 +3,7 @@ import logging
 from typing import Optional
 from .base import Agent
 from nlip_sdk.nlip import NLIP_Message, NLIP_Factory
+from langdetect import detect, LangDetectException
 
 import httpx
 
@@ -121,3 +122,11 @@ class OllamaTranslationAgent(Agent):
             f"{text}\n\n"
             "Translated text:"
         )
+    
+    def detect_language(self, text: str) -> str:
+        try:
+            return detect(text)
+        except LangDetectException as e:
+            raise TranslationError(f"Language detection failed: {e}") from e
+
+        
