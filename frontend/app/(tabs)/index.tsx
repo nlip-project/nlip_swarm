@@ -6,11 +6,15 @@ import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, FlatList, Image, Keyboard, KeyboardAvoidingView, Linking, Platform, StyleSheet, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import { Alert, FlatList, Image, Keyboard, KeyboardAvoidingView, Linking, Platform, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import NLIPClient from '../nlipClient';
 
 export default function TabThreeScreen() {
     const theme = useColorScheme() ?? 'light';
     const c = Colors[theme];
+    const insets = useSafeAreaInsets();
+    const isWeb = Platform.OS === 'web';
     const [text, setText] = useState('');
     const [isSending, setIsSending] = useState(false);
     const [imageUri, setImageUri] = useState<string | null>(null);
@@ -32,7 +36,13 @@ export default function TabThreeScreen() {
     const [messages, setMessages] = useState<Message[]>([]);
     const listRef = useRef<FlatList<Message>>(null);
 
-    const API_URL = 'http://localhost:8000/nlip/';
+    // Platform-aware base URL. For web we can use the current origin. For Android emulator use 10.0.2.2 to reach host machine.
+    // For a physical device set this to your machine IP (e.g. 'http://192.168.1.10:8000').
+    const API_BASE = Platform.OS === 'web'
+        ? (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8000')
+        : (Platform.OS === 'android' ? 'http://10.0.2.2:8000' : 'http://localhost:8000');
+    // client instance - NLIPClient handles payload construction and response parsing
+    const client = new NLIPClient(API_BASE, { timeout: 30000 });
 
     // Helper function to format file size
     function formatFileSize(bytes: number): string {
@@ -130,79 +140,25 @@ export default function TabThreeScreen() {
         }
     }
 
-    async function sendToBackend(inputText: string): Promise<string> {
-        console.log('[sendToBackend] Starting request with text:', inputText);
-        
-        const payload = {
-            format: 'text',
-            subformat: 'plain',
-            content: inputText,
-            submessages: [
-                {
-                    format: 'generic',
-                    subformat: 'translation_request',
-                    content: {
-                        target_language: 'en',
-                    },
-                },
-            ],
-        };
-        
-        console.log('[sendToBackend] Payload:', JSON.stringify(payload, null, 2));
-        console.log('[sendToBackend] Sending POST to:', API_URL);
-
-        // Add timeout to prevent hanging forever
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-
+    async function sendToBackend(inputText: string, options?: { imageUri?: string | null; fileUri?: string | null; fileName?: string | null; fileType?: string | null; }) : Promise<string> {
+        console.log('[sendToBackend] Delegating to NLIPClient with text:', inputText, 'options:', options);
         try {
-            const res = await fetch(API_URL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(payload),
-                signal: controller.signal,
-            });
-
-            clearTimeout(timeoutId);
-            console.log('[sendToBackend] Response status:', res.status, res.statusText);
-
-            if (!res.ok) {
-                const text = await res.text().catch(() => '');
-                console.error('[sendToBackend] Error response body:', text);
-                throw new Error(`Backend error ${res.status}: ${text || res.statusText}`);
+            if (options?.imageUri) {
+                const reply = await client.sendWithImage(inputText, options.imageUri, options.fileName ?? undefined, options.fileType ?? undefined);
+                console.log('[sendToBackend] NLIPClient replied (image):', reply);
+                return reply;
             }
-
-            const data = await res.json();
-            console.log('[sendToBackend] Response data:', JSON.stringify(data, null, 2));
-            
-            const content = data?.content;
-            console.log('[sendToBackend] Extracted content:', content);
-            
-            if (typeof content === 'string' && content.trim().length > 0) {
-                console.log('[sendToBackend] Returning content as string:', content);
-                return content;
+            if (options?.fileUri) {
+                const reply = await client.sendWithFile(inputText, options.fileUri, options.fileName ?? undefined, options.fileType ?? undefined);
+                console.log('[sendToBackend] NLIPClient replied (file):', reply);
+                return reply;
             }
-            if (Array.isArray(data?.submessages)) {
-                console.log('[sendToBackend] Checking submessages:', data.submessages.length);
-                const firstText = data.submessages.find((s: any) => s?.format?.toLowerCase?.() === 'text' && typeof s?.content === 'string');
-                if (firstText?.content) {
-                    console.log('[sendToBackend] Found text in submessage:', firstText.content);
-                    return firstText.content as string;
-                }
-            }
-            const fallback = typeof content === 'object' ? JSON.stringify(content) : 'Received response';
-            console.log('[sendToBackend] Using fallback response:', fallback);
-            return fallback;
-        } catch (error: any) {
-            clearTimeout(timeoutId);
-            if (error.name === 'AbortError') {
-                console.error('[sendToBackend] Request timed out after 30 seconds');
-                throw new Error('Request timed out. The server may be slow or unresponsive.');
-            }
-            console.error('[sendToBackend] Fetch error:', error);
-            throw error;
+            const reply = await client.sendMessage(inputText);
+            console.log('[sendToBackend] NLIPClient replied:', reply);
+            return reply;
+        } catch (err: any) {
+            console.error('[sendToBackend] NLIPClient error:', err);
+            throw err;
         }
     }
 
@@ -230,26 +186,27 @@ export default function TabThreeScreen() {
         console.log('[handleSend] Adding message to list:', newMessage);
         // Prepend for inverted FlatList so newest appears at the visual bottom
         setMessages((prev) => [newMessage, ...prev]);
-        setText('');
-        setImageUri(null);
-        setFileUri(null);
-        setFileName(null);
-        setFileSize(null);
-        setFileType(null);
+    // capture attachments locally before clearing UI state
+    const localImage = imageUri;
+    const localFile = fileUri;
+    const localFileName = fileName;
+    const localFileType = fileType;
+
+    setText('');
+    setImageUri(null);
+    setFileUri(null);
+    setFileName(null);
+    setFileSize(null);
+    setFileType(null);
         Keyboard.dismiss();
         requestAnimationFrame(() => {
             listRef.current?.scrollToOffset({ offset: 0, animated: true });
         });
 
-        // Only send to backend when there's text content. Attachments are not sent yet.
-        if (!trimmed) {
-            console.log('[handleSend] No text content, skipping backend call');
-            return;
-        }
-        
-        console.log('[handleSend] Sending to backend...');
+        // Send to backend with optional attachments
+        console.log('[handleSend] Sending to backend...', { trimmed, localImage, localFile, localFileName, localFileType });
         setIsSending(true);
-        void sendToBackend(trimmed)
+        void sendToBackend(trimmed, { imageUri: localImage, fileUri: localFile, fileName: localFileName, fileType: localFileType })
             .then((reply) => {
                 console.log('[handleSend] Received reply:', reply);
                 const replyMessage: Message = {
@@ -279,16 +236,21 @@ export default function TabThreeScreen() {
             style={styles.flex1}
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
-            <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+            {/* Use a non-intercepting container so scrolling gestures reach the FlatList on web */}
+            <View style={styles.flex1} pointerEvents="box-none">
                 <ThemedView style={styles.container}>
+                    {/* Top spacer to avoid notch/camera area on newer iPhones (e.g. iPhone 16 Pro) */}
+                    <View pointerEvents="none" style={[styles.topSpacer, { height: (insets.top || 0) + 12 }]} />
                     <FlatList
                         ref={listRef}
                         style={styles.list}
                         data={messages}
                         keyExtractor={(item) => item.id}
-                        inverted
-                        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
-                        contentContainerStyle={messages.length === 0 ? styles.emptyListContainer : undefined}
+                        inverted={!isWeb}
+                        nestedScrollEnabled
+                        keyboardShouldPersistTaps="handled"
+                        {...(!isWeb ? { maintainVisibleContentPosition: { minIndexForVisible: 0 } } : {})}
+                        contentContainerStyle={[{ flexGrow: 1 }, messages.length === 0 ? styles.emptyListContainer : undefined]}
                         renderItem={({ item }) => (
                             <View style={[
                                 styles.messageRow,
@@ -410,7 +372,7 @@ export default function TabThreeScreen() {
                         </TouchableOpacity>
                     </View>
                 </ThemedView>
-            </TouchableWithoutFeedback>
+            </View>
         </KeyboardAvoidingView>
     );
 }
@@ -421,7 +383,7 @@ const styles = StyleSheet.create({
     },
     container: {
         flex: 1,
-        justifyContent: 'center',
+        justifyContent: 'flex-start',
         paddingBottom: 8,
         paddingTop: 8,
         gap: 8,
@@ -478,6 +440,10 @@ const styles = StyleSheet.create({
         height: 90,
         borderRadius: 8,
         marginBottom: 8,
+    },
+    topSpacer: {
+        backgroundColor: '#ffffff',
+        width: '100%'
     },
     bubble: {
         maxWidth: '80%',
