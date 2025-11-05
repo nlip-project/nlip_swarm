@@ -1,10 +1,17 @@
 # Backend Endpoint
 
-### /health
+### /capabilities
 
-Simple health check for the app
+GET endpoint to check what capabilities the manager has.
 
-### /process
+### /nlip
+
+POST endpoint that acts as the connection to a frontend machine
+accepting NLIP message requests as the body and returning NLIP
+message responses from the swarm manager.
+
+
+## Translation Agent
 
 Accepts an NLIP `process` request and routes user messages through an
 English pivot so downstream agents can reason in a single language:
@@ -22,6 +29,7 @@ other locale) interact with the chatbot in their preferred language.
 The translation agent reads the following environment variables (all optional):
 
 - `OLLAMA_URL`: Base URL for the Ollama server (default `http://localhost:11434`).
+- `OLLAMA_MODEL`: Actual model the Agents are running on (default `llama3.2:3b`) 
 - `NLIP_TRANSLATION_PIVOT_LOCALE`: Language used for internal reasoning (default `en`).
 - `NLIP_TRANSLATION_DEFAULT_LOCALE`: Locale assumed when detection fails (default `en`).
 
