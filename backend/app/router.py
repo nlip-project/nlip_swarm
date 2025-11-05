@@ -2,7 +2,6 @@ from __future__ import annotations
 import json
 from .registry import AgentRegistry
 from nlip_sdk.nlip import NLIP_Message
-from .agents.base import Agent
 from typing import List, Optional, Callable
 import re
 
@@ -29,19 +28,58 @@ def build_router_prompt(
         f"TASK TEXT: {task_text}\n"
     )
 
-def _extract_json_safetly(text: str) -> dict:
+def _extract_json_safely(text: str) -> dict:
+    """
+    Attempt to parse JSON from text without regex recursion.
+    1) Try json.loads on the whole text.
+    2) If that fails, scan for the first balanced JSON object and parse it.
+       Handles quoted strings and escapes so braces inside strings are ignored.
+    Returns a dict if a JSON object is found; otherwise {}.
+    """
     try:
-        return json.loads(text)
+        data = json.loads(text)
+        return data if isinstance(data, dict) else {}
     except Exception:
         pass
 
-    m = re.search(r"\{(?:[^{}]|(?R))*\}", text, flags=re.DOTALL)
-    if not m:
-        return {}
-    try:
-        return json.loads(m.group(0))
-    except Exception:
-        return {}
+    start_idx = None
+    depth = 0
+    in_string = False
+    escape = False
+
+    for i, ch in enumerate(text):
+        if start_idx is None:
+            if ch == '{':
+                start_idx = i
+                depth = 1
+                in_string = False
+                escape = False
+        else:
+            if in_string:
+                if escape:
+                    escape = False
+                elif ch == '\\':
+                    escape = True
+                elif ch == '"':
+                    in_string = False
+            else:
+                if ch == '"':
+                    in_string = True
+                elif ch == '{':
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0 and start_idx is not None:
+                        candidate = text[start_idx:i+1]
+                        try:
+                            data = json.loads(candidate)
+                            return data if isinstance(data, dict) else {}
+                        except Exception:
+                            start_idx = None
+                            depth = 0
+                            in_string = False
+                            escape = False
+    return {}
 
 async def route(
     registry: AgentRegistry,
@@ -90,7 +128,7 @@ async def route(
         return agent_pool[0]
 
     raw_text = raw_out.content if hasattr(raw_out, "content") else str(raw_out)
-    data = _extract_json_safetly(raw_text)
+    data = _extract_json_safely(raw_text)
     agent_name = data.get("agent_name") if isinstance(data, dict) else None
 
     if not agent_name or agent_name not in agent_names:
@@ -104,7 +142,7 @@ async def route(
             else:
                 raw_out2 = await llm.invoke(retry_prompt)
             raw_text2 = raw_out2.content if hasattr(raw_out2, "content") else str(raw_out2)
-            data2 = _extract_json_safetly(raw_text2)
+            data2 = _extract_json_safely(raw_text2)
             agent_name2 = data2.get("agent_name") if isinstance(data2, dict) else None
             agent_name = agent_name2 if agent_name2 in agent_names else None
         except Exception:

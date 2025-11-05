@@ -116,3 +116,4 @@ class SwarmManager:
 
 swarm_manager = SwarmManager()
 swarm_manager.register_agent(TranslationAgent())
+

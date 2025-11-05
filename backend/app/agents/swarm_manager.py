@@ -4,9 +4,9 @@ from .base import Agent
 from collections import defaultdict, deque
 from nlip_sdk.nlip import NLIP_Message, NLIP_Factory, AllowedFormats, NLIP_SubMessage
 from ..registry import AgentRegistry
-from ..router import route, build_router_prompt
+from ..router import route
 from .translation import TranslationError, OllamaTranslationAgent
-from typing import List, cast, Deque, List, Tuple, Dict
+from typing import List, Deque, List, Tuple, Dict
 
 class SwarmManager(Agent):
     """
@@ -16,7 +16,7 @@ class SwarmManager(Agent):
     - registry: The AgentRegistry containing all available agents, list of agents
     - router_llm: The model used for routing decisions by the swarm manager
 
-    dispath(subMessage: NLIP_Message) -> NLIP_Message
+    dispatch(subMessage: NLIP_Message) -> NLIP_Message
     - subMessage: NLIP_Message to be dispatched to an agent
 
     routes the subMessage to the appropriate agent and returns its response
@@ -58,6 +58,7 @@ class SwarmManager(Agent):
             self.sessions[conv_id]["lang"] = code
         except TranslationError:
             pass
+        #Defaults to 'en'
     
     def _target_lang(self, conv_id: str) -> str:
         return str(self.sessions[conv_id]["lang"])

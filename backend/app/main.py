@@ -2,7 +2,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi import Request
-from nlip_sdk.nlip import NLIP_Factory, AllowedFormats
+from nlip_sdk.nlip import NLIP_Factory
 from app.nlip_adapter import from_dict, to_dict
 from app.registry import AgentRegistry
 from app.agents.swarm_manager import SwarmManager
