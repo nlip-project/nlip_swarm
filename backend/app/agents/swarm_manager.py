@@ -4,6 +4,7 @@ from typing import List, cast
 from .base import Agent
 from ..registry import AgentRegistry
 from ..router import route
+from .translation import TranslationError, OllamaTranslationAgent
 from nlip_sdk.nlip import NLIP_Message, NLIP_Factory, AllowedFormats, NLIP_SubMessage
 
 class SwarmManager(Agent):
@@ -24,10 +25,11 @@ class SwarmManager(Agent):
 
     routes the message to the appropriate agent and returns its response
     """
-    def __init__(self, registry: AgentRegistry, router_llm):
+    def __init__(self, registry: AgentRegistry, router_llm, translator: OllamaTranslationAgent):
         super().__init__(name="swarm_manager", capabilities=["swarm.manage", "plan.dispatch"], llm=router_llm)
         self.registry = registry
         self.router_llm = router_llm
+        self.translator = translator
 
     async def dispatch(self, subMessage: NLIP_Message) -> NLIP_Message:
         agent = await route(self.registry, subMessage, self.router_llm)
@@ -38,6 +40,25 @@ class SwarmManager(Agent):
             err.messagetype = "error"
             return err
         
+    def _detect_lang(self, text: str) -> str:
+        try:
+            code = self.translator.detect_language(text)
+            return code
+        except TranslationError:
+            return "en"
+        
+    def _maybe_localize_text(self, src_lang: str, out_message: NLIP_Message) -> NLIP_Message:
+        if (out_message.format == AllowedFormats.text and isinstance(out_message.content, str)):
+            try:
+                if src_lang and src_lang != "en":
+                    localized = self.translator.translate(out_message.content, target_locale=src_lang)
+                    loc = NLIP_Factory.create_text(localized, label=getattr(out_message, "label", ''))
+                    loc.messagetype = out_message.messagetype or "response"
+                    loc.subformat = out_message.subformat or "text"
+                    return loc
+            except TranslationError:
+                pass
+        return out_message
 
     async def handle(self, message: NLIP_Message) -> NLIP_Message:
         """
@@ -57,20 +78,30 @@ class SwarmManager(Agent):
                 )
             ]
 
-        run_msgs: list[NLIP_Message] = [
-            NLIP_Message(
-                messagetype=message.messagetype or "request",
-                format=s.format,
-                subformat=s.subformat,
-                content=s.content,
-                label=s.label,
+        run_msgs: list[NLIP_Message] = []
+        input_langs: list[str] = []
+        for s in incoming_subs:
+            text_for_lang = s.content if isinstance(s.content, str) else ""
+            src_lang = self._detect_lang(text_for_lang) if text_for_lang else "en"
+            input_langs.append(src_lang)
+            run_msgs.append(
+                NLIP_Message(
+                    messagetype="request",
+                    format=s.format,
+                    subformat=s.subformat,
+                    content=s.content,
+                    label=s.label,
+                )
             )
-            for s in incoming_subs
-        ]
 
         results: list[NLIP_Message] = await asyncio.gather(
             *[asyncio.create_task(self.dispatch(rm)) for rm in run_msgs]
         )
+
+        localized_results: List[NLIP_Message] = [
+            self._maybe_localize_text(src_lang, r)
+            for src_land, r in zip(input_langs, results)
+        ]
 
         out_subs: list[NLIP_SubMessage] = [
             NLIP_SubMessage(
@@ -79,7 +110,7 @@ class SwarmManager(Agent):
                 content=r.content,
                 label=r.label,
             )
-            for r in results
+            for r in localized_results
         ]
 
         overall = "ok" if all((getattr(r, "messagetype", "") or "").lower() != "error" for r in results) else "partial"

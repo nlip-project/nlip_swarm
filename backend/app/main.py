@@ -30,7 +30,7 @@ registry = AgentRegistry([
     translation_agent,
 ])
 
-swarm_manager = SwarmManager(registry=registry, router_llm=router_llm)
+swarm_manager = SwarmManager(registry=registry, router_llm=router_llm, translator=translation_agent)
 
 app = FastAPI()
 
