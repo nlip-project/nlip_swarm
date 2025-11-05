@@ -3,13 +3,8 @@ from pathlib import Path
 import types
 import pytest
 from typing import Any, cast
-
-
-ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
 from fastapi.testclient import TestClient
+import importlib
 
 
 def _install_stubs_before_import():
@@ -82,6 +77,12 @@ def _install_stubs_before_import():
     lc_any = cast(Any, lc_mod)
     lc_any.ChatOllama = _ChatOllama
     sys.modules.setdefault("langchain_ollama", lc_mod)
+
+    try:
+        backend_app = importlib.import_module("backend.app")
+        sys.modules.setdefault("app", backend_app)
+    except Exception:
+        pass
 
 
 def test_capabilities_returns_registered_agents(monkeypatch):
