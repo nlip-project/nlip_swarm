@@ -1,15 +1,18 @@
 import os
+import json
 from typing import List, Optional, Tuple, Dict, Any
 
 from langdetect import detect, LangDetectException
 
 from nlip_sdk import nlip
 from ..agents.translation import OllamaTranslationAgent, TranslationError
+from ..agents.imageRecognition import LlavaImageRecognitionAgent
 from .api import SafeApplication, NLIP_Session, setup_server
 
 PIVOT_LOCALE = os.getenv("NLIP_TRANSLATION_PIVOT_LOCALE", "en")
 DEFAULT_SOURCE_LOCALE = os.getenv("NLIP_TRANSLATION_DEFAULT_LOCALE", "en")
 _translator = OllamaTranslationAgent()
+_image_agent = LlavaImageRecognitionAgent()
 
 """
 Actual message parsing logic.
@@ -20,10 +23,15 @@ def process_nlip(payload: nlip.NLIP_Message) -> nlip.NLIP_Message:
     Process an incoming NLIP message using a translate-to-English-then-back
     workflow so downstream agents can reason in a single language.
     """
+    # If the incoming message contains image(s), use the image processing flow
+    #if _message_contains_image(payload):
+    #    return _process_image_payload(payload)
+
+    # Otherwise fall back to text-only translate flow
     text = _extract_text(payload)
     if not text or not text.strip():
         return nlip.NLIP_Factory.create_text("No text provided for translation.", language="english", label="error")
-    
+
     source_lang, target_lang = _extract_languages(payload)
     if not source_lang:
         source_lang = _detect_safe(text)
@@ -167,7 +175,6 @@ recognizing languages, and for processing a request.
 """
 
 def _extract_text(message: nlip.NLIP_Message) -> Optional[str]:
-
     parts = []
 
     def pull_text(obj: Any) -> Optional[str]:
@@ -179,11 +186,21 @@ def _extract_text(message: nlip.NLIP_Message) -> Optional[str]:
                 if isinstance(v, str) and v.strip():
                     return v
         return None
-    
-    top = pull_text(message.content)
-    if top:
-        parts.append(top)
-    
+
+    # Check top-level content first. If the message itself is an image, describe it.
+    top_text = pull_text(message.content)
+    if top_text:
+        parts.append(top_text)
+    else:
+        # top-level might be binary (image) format per NLIP AllowedFormats
+        fmt = getattr(message, "format", None)
+        if fmt == nlip.AllowedFormats.binary or (isinstance(fmt, str) and fmt.lower() == "binary"):
+            desc = None
+            # desc = _describe_image_from_content(message.content)
+            if desc:
+                parts.append(desc)
+
+    # Now handle submessages: text submessages and image submessages
     for sub in (message.submessages or []):
         sub_text = pull_text(sub.content)
         if sub_text:
@@ -213,8 +230,8 @@ def _extract_languages(message: nlip.NLIP_Message) -> Tuple[Optional[str], Optio
     return None, None
 
 def _pick_language(d: Dict[str, Any], key: str) -> Optional[str]:
-    for l in LANG_KEYS[key]:
-        v = d.get(l)
+    for lang_key in LANG_KEYS[key]:
+        v = d.get(lang_key)
         if isinstance(v, str) and v.strip():
             return v
     return None
