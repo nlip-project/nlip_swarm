@@ -1,14 +1,30 @@
 import os
+import logging
 from typing import Optional
+from .base import Agent
+from nlip_sdk.nlip import NLIP_Message, NLIP_Factory
 
 import httpx
+
+logging.basicConfig(level=logging.DEBUG)
+log = logging.getLogger(__name__)
 
 
 class TranslationError(Exception):
     """Raised when the Ollama translation agent cannot complete a request."""
 
 
-class OllamaTranslationAgent:
+def _infer_locale(subformat: Optional[str]) -> Optional[str]:
+    if not subformat:
+        return None
+    parts = subformat.split(".")
+    if len(parts) >= 3 and parts[0] == "task" and parts[1] == "translate":
+        return parts[2]
+    if len(parts) >= 2 and parts[0] == "translate":
+        return parts[1]
+    return None
+
+class OllamaTranslationAgent(Agent):
     """
     Simple translation agent that delegates translation requests to a locally
     running Ollama instance.
@@ -21,9 +37,26 @@ class OllamaTranslationAgent:
         model: Optional[str] = None,
         timeout: float = 30.0,
     ) -> None:
+        super().__init__(
+            name="ollama_translation",
+            capabilities=["task.translate.*", "task.translate"],
+            llm=None,
+        )
         self.base_url = (base_url or os.getenv("OLLAMA_URL", "http://localhost:11434")).rstrip("/")
         self.model = model or "llama3.1"
         self.timeout = timeout
+
+    async def handle(self, message: NLIP_Message) -> NLIP_Message:
+        text = message.content if isinstance(message.content, str) else ("" if message.content is None else str(message.content))
+        target = _infer_locale(getattr(message, "subformat", None)) or "en"
+
+        try:
+            translated = self.translate(text, target_locale=target)
+            return NLIP_Factory.create_text(translated, label=getattr(message, "label", ''))
+        except Exception as e:
+            err = NLIP_Factory.create_text(f"translation failed: {e}", label=getattr(message, "label", ''))
+            err.messagetype = "error"
+            return err
 
     def translate(self, text: str, target_locale: Optional[str] = None) -> str:
         """
@@ -54,7 +87,10 @@ class OllamaTranslationAgent:
         }
 
         try:
+            log.debug(f"[TRANSLATE] model={self.model} text='{text[:80]}' target={target_locale}")
+            log.debug(f"[TRANSLATE] POST {url} with stream=False")
             response = httpx.post(url, json=payload, timeout=self.timeout)
+            log.error(f"[OLLAMA {url}] HTTP {response.status_code} body={response.text}")
             response.raise_for_status()
         except httpx.HTTPError as exc:
             raise TranslationError(f"Ollama request failed: {exc}") from exc
