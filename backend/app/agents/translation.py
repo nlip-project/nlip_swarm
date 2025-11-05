@@ -88,10 +88,7 @@ class OllamaTranslationAgent(Agent):
         }
 
         try:
-            log.debug(f"[TRANSLATE] model={self.model} text='{text[:80]}' target={target_locale}")
-            log.debug(f"[TRANSLATE] POST {url} with stream=False")
             response = httpx.post(url, json=payload, timeout=self.timeout)
-            log.error(f"[OLLAMA {url}] HTTP {response.status_code} body={response.text}")
             response.raise_for_status()
         except httpx.HTTPError as exc:
             raise TranslationError(f"Ollama request failed: {exc}") from exc
