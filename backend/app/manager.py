@@ -17,6 +17,9 @@ class TaskDelegation(BaseModel):
     details: str = Field(description="Specific instructions or parsed data for agent.")
 
 class Agent(ABC):
+    """
+    Generic Agent class that all specialist agents inherit from.
+    """
     def __init__(self, name, description, manager=None):
         self.name = name
         self.description = description
@@ -28,6 +31,9 @@ class Agent(ABC):
         pass
 
 class TranslationAgent(Agent):
+    """
+    Agent specialized in translating text between languages.
+    """
     def __init__(self, manager=None):
         super().__init__("TranslationAgent", "Handles translation of text between languages.", manager)
         self.translator_agent = OllamaTranslationAgent()

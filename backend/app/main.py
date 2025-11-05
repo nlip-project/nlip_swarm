@@ -1,26 +1,59 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
-from .manager import swarm_manager
-from nlip_sdk.nlip import NLIP_Message
+from __future__ import annotations
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from fastapi import Request
+from nlip_sdk.nlip import NLIP_Factory, AllowedFormats
+from app.nlip_adapter import from_dict, to_dict
+from app.registry import AgentRegistry
+from app.agents.swarm_manager import SwarmManager
+from app.agents.translation import OllamaTranslationAgent
+from langchain_ollama import ChatOllama
+import os
 
-app = FastAPI(
-    title="Local Agent Swarm API",
-    description="API for managing a swarm of local AI agents using NLIP SDK"
+OLLAMA_URL = "http://localhost:11434"
+OLLAMA_MODEL = "llama3.2:3b"
+ROUTER_TEMPERATURE = 0
+
+router_llm = ChatOllama(
+    base_url=OLLAMA_URL,
+    model=OLLAMA_MODEL,
+    temperature=ROUTER_TEMPERATURE,
 )
 
+translation_agent = (OllamaTranslationAgent(
+    model=OLLAMA_MODEL,
+    base_url=OLLAMA_URL,
+))
+
+
+registry = AgentRegistry([
+    translation_agent,
+])
+
+swarm_manager = SwarmManager(registry=registry, router_llm=router_llm)
+
+app = FastAPI()
+
+@app.get("/capabilities")
+def capabilities():
+    """
+    Report all registered agents + capabilities in an NLIP JSON message.
+    """
+    caps = {
+        agent.name: agent.capabilities
+        for agent in registry.agents
+    }
+    msg = NLIP_Factory.create_json(caps, messagetype="response")
+    return JSONResponse(msg.to_dict())
+
+
 @app.post("/nlip")
-def process_frontend_request(payload: NLIP_Message):
-    try:
-        result = swarm_manager.route_task(payload.to_json())
-        return {
-            "status": "success",
-            "request_recieved": payload.to_dict(),
-            "response": result,
-            "history": swarm_manager.history
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+async def nlip(request: Request):
+    """
+    Entry point. Receives NLIP messages.
+    Always delegates to Swarm Manager.
+    """
+    payload = await request.json()
+    incoming = from_dict(payload)
+    result = await swarm_manager.handle(incoming)
+    return JSONResponse(to_dict(result))
