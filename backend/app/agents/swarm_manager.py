@@ -62,19 +62,6 @@ class SwarmManager(Agent):
     def _target_lang(self, conv_id: str) -> str:
         return str(self.sessions[conv_id]["lang"])
 
-    async def dispatch(self, conv_id: str, subMessage: NLIP_Message, src_lang: str) -> NLIP_Message:
-        history_text = self._get_history_text(conv_id)
-        agent = await route(
-            self.registry, 
-            subMessage, self.router_llm, 
-            build_prompt=lambda names, task, sub: build_router_prompt(names, task, sub, history_text))
-        try:
-            return await agent.handle(subMessage)
-        except Exception as e:
-            err = NLIP_Factory.create_text(f"Agent {agent.name} failed: {repr(e)}", label=getattr(subMessage, "label", ''))
-            err.messagetype = "error"
-            return err
-        
     def _detect_lang(self, text: str) -> str:
         try:
             code = self.translator.detect_language(text)
@@ -95,11 +82,29 @@ class SwarmManager(Agent):
                 pass
         return out_message
 
+    async def dispatch(self, conv_id: str, subMessage: NLIP_Message, src_lang: str) -> NLIP_Message:
+        history_text = self._get_history_text(conv_id)
+        agent = await route(
+            self.registry,
+            subMessage,
+            self.router_llm,
+            build_prompt=None,  # use default builder
+            history_text=history_text,
+        )
+        try:
+            return await agent.handle(subMessage)
+        except Exception as e:
+            err = NLIP_Factory.create_text(f"Agent {agent.name} failed: {repr(e)}", label=getattr(subMessage, "label", ''))
+            err.messagetype = "error"
+            return err
+
+
     async def handle(self, message: NLIP_Message) -> NLIP_Message:
         """
         Receive a top-level NLIP request, fan out to agents, and return a bundled response.
         Ensures all `submessages` we create are proper NLIP_SubMessage instances (format is AllowedFormats).
         """
+        conv_id = self._get_conv_id(message)
 
         if getattr(message, "submessages", None):
             incoming_subs: list[NLIP_SubMessage] = message.submessages  # type: ignore[assignment]
@@ -119,6 +124,9 @@ class SwarmManager(Agent):
             text_for_lang = s.content if isinstance(s.content, str) else ""
             src_lang = self._detect_lang(text_for_lang) if text_for_lang else "en"
             input_langs.append(src_lang)
+            self._remember_lang(conv_id, text_for_lang)
+            if isinstance(s.content, str):
+                self._push_history(conv_id, "user", s.content)
             run_msgs.append(
                 NLIP_Message(
                     messagetype="request",
@@ -130,13 +138,20 @@ class SwarmManager(Agent):
             )
 
         results: list[NLIP_Message] = await asyncio.gather(
-            *[asyncio.create_task(self.dispatch(rm)) for rm in run_msgs]
+            *[
+                asyncio.create_task(self.dispatch(conv_id, rm, src_lang)) 
+                for rm, src_lang in zip(run_msgs, input_langs)
+                ]
         )
 
         localized_results: List[NLIP_Message] = [
             self._maybe_localize_text(src_lang, r)
-            for src_land, r in zip(input_langs, results)
+            for src_lang, r in zip(input_langs, results)
         ]
+
+        for r in localized_results:
+            if r.format == AllowedFormats.text and isinstance(r.content, str):
+                self._push_history(conv_id, "assistant", r.content)
 
         out_subs: list[NLIP_SubMessage] = [
             NLIP_SubMessage(

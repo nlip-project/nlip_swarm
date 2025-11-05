@@ -66,11 +66,13 @@ async def route(
     
     candidates = registry.match(subf)
     if candidates:
-        if len(candidates) > 1:
-            chosen = candidates[0]
-        return chosen
+        if len(candidates) == 1:
+            return candidates[0]
+        agent_pool = candidates
+    else:
+        agent_pool = registry.agents
     
-    agent_names = [a.name for a in registry.agents]
+    agent_names = [a.name for a in agent_pool]
     prompt_builder = build_prompt or build_router_prompt
     sys_prompt = prompt_builder(
         agent_names=agent_names,
@@ -85,7 +87,7 @@ async def route(
         else:
             raw_out = await llm.invoke(sys_prompt)
     except Exception as e:
-        fallback = registry.agents[0]
+        fallback = agent_pool[0]
         return fallback
     
     if hasattr(raw_out, "content"):
@@ -97,10 +99,10 @@ async def route(
     agent_name = data.get("agent_name")
 
     if not agent_name or agent_name not in agent_names:
-        fallback = registry.agents[0]
+        fallback = agent_pool[0]
         return fallback
-    for a in registry.agents:
+    for a in agent_pool:
         if a.name == agent_name:
             return a
-    fallback = registry.agents[0]
+    fallback = agent_pool[0]
     return fallback
