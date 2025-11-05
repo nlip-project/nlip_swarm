@@ -13,13 +13,9 @@ import { Colors } from "@/constants/theme";
 export function Drawout({
   triggerPosition,
   clearChat,
-  oldConversations,
-  onRestoreConversation,
 }: {
   triggerPosition?: { top: number; left: number };
   clearChat?: () => void;
-  oldConversations?: any[][];
-  onRestoreConversation?: (index: number) => void;
 }) {
   const [open, setOpen] = useState(false);
   const screenWidth = Dimensions.get("window").width;
@@ -79,20 +75,6 @@ export function Drawout({
             onPress={clearChat}
             accessibilityLabel="Clear chat feed"
           />
-          {oldConversations && oldConversations.length > 0 && (
-            <View style={{ marginTop: 16 }}>
-              {oldConversations.map((conv, idx) => (
-                <Button
-                  key={idx}
-                  title={`Old Conversation ${idx + 1}`}
-                  onPress={() =>
-                    onRestoreConversation && onRestoreConversation(idx)
-                  }
-                  accessibilityLabel={`Restore old conversation ${idx + 1}`}
-                />
-              ))}
-            </View>
-          )}
         </View>
       </Animated.View>
     </View>

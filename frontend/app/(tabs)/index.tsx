@@ -48,7 +48,6 @@ export default function TabThreeScreen() {
   const listRef = useRef<FlatList<Message>>(null);
 
   const screen = Dimensions.get("window");
-  // Example: 8% from top, 4% from left
   const drawoutPosition = {
     top: screen.height * 0.08,
     left: screen.width * 0.04,
@@ -213,12 +212,7 @@ export default function TabThreeScreen() {
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
         <ThemedView style={styles.container}>
-          <Drawout
-            triggerPosition={drawoutPosition}
-            clearChat={clearChat}
-            oldConversations={oldConversations}
-            onRestoreConversation={onRestoreConversation}
-          />
+          <Drawout triggerPosition={drawoutPosition} clearChat={clearChat} />
           <FlatList
             ref={listRef}
             style={styles.list}
