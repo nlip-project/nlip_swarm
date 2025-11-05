@@ -1,10 +1,17 @@
 # Backend Endpoint
 
-### /health
+### /capabilities
 
-Simple health check for the app
+GET endpoint to check what capabilities the manager has.
 
-### /process
+### /nlip
+
+POST endpoint that acts as the connection to a frontend machine
+accepting NLIP message requests as the body and returning NLIP
+message responses from the swarm manager.
+
+
+## Translation Agent
 
 Accepts an NLIP `process` request and routes user messages through an
 English pivot so downstream agents can reason in a single language:
@@ -17,11 +24,63 @@ English pivot so downstream agents can reason in a single language:
 This keeps the internal prompts consistent while farmers in Uganda (or any
 other locale) interact with the chatbot in their preferred language.
 
+## Request Example:
+{
+  "messagetype": "request",
+  "format": "generic",
+  "subformat": "task.translate.fr",
+  "label": "translate_req",
+  "content": "hello world"
+}
+
+### Response: 
+{
+    "messagetype": "response",
+    "format": "generic",
+    "subformat": "nlip.bundle",
+    "content": "ok",
+    "label": "translate_req",
+    "submessages": [
+        {
+            "format": "text",
+            "subformat": "english",
+            "content": "bonjour le monde",
+            "label": "translate_req"
+        }
+    ]
+}
+
+### Request with Multiple SubMessages
+{
+  "messagetype": "request",
+  "format": "generic",
+  "subformat": "nlip.bundle",
+  "content": "batch",
+  "submessages": [
+    {
+      "format": "generic",
+      "subformat": "task.translate.*",
+      "label": "line1",
+      "content": "tests de détection automatique"
+    },
+    {
+      "format": "generic",
+      "subformat": "task.translate.es",
+      "label": "line2",
+      "content": "Testing english to specific language"
+    }
+  ]
+}
+
+### Bundled Response
+
+
 #### Configuration
 
 The translation agent reads the following environment variables (all optional):
 
 - `OLLAMA_URL`: Base URL for the Ollama server (default `http://localhost:11434`).
+- `OLLAMA_MODEL`: Actual model the Agents are running on (default `llama3.2:3b`) 
 - `NLIP_TRANSLATION_PIVOT_LOCALE`: Language used for internal reasoning (default `en`).
 - `NLIP_TRANSLATION_DEFAULT_LOCALE`: Locale assumed when detection fails (default `en`).
 
