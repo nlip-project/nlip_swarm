@@ -10,8 +10,8 @@ from app.agents.translation import OllamaTranslationAgent
 from langchain_ollama import ChatOllama
 import os
 
-OLLAMA_URL = "http://localhost:11434"
-OLLAMA_MODEL = "llama3.2:3b"
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
 ROUTER_TEMPERATURE = 0
 
 router_llm = ChatOllama(
