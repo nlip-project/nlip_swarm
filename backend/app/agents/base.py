@@ -16,8 +16,6 @@ class Agent:
     - defines how to handle an NLIP message
 
     """
-
-
     name: str
     capabilities: List[str]
 

@@ -13,9 +13,18 @@ from backend.app.agents.translation import OllamaTranslationAgent, TranslationEr
 
 
 class DummyResponse:
-    def __init__(self, *, json_data=None, status_ok=True):
+    def __init__(self, *, json_data=None, status_ok=True, status_code=None, text=None):
         self._json_data = json_data or {}
         self._status_ok = status_ok
+        self.status_code = 200 if status_code is None else status_code
+        if text is not None:
+            self.text = text
+        else:
+            try:
+                import json as _json
+                self.text = _json.dumps(self._json_data)
+            except Exception:
+                self.text = str(self._json_data)
 
     def raise_for_status(self) -> None:
         if not self._status_ok:
