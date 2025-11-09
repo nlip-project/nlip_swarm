@@ -134,31 +134,51 @@ Service guarantees:
 - Session correlator tokens are preserved on forwarded and returned messages so clients can correlate responses.
 - Tests and agents expect the `messages` list and the labeling conventions above; changing these requires updating tests and consumers.
 
-  - Install ffmpeg (required by Whisper):
+## Audio / Sound Agent
 
-    ```bash
-    # Ubuntu / Debian
-    sudo apt update && sudo apt install ffmpeg
+Incoming NLIP audio submessages are routed to Whisper for ASR and then optionally
+re-translated through Ollama so the final response matches the user's locale.
 
-    # Arch Linux
-    sudo pacman -S ffmpeg
+Environment variables for the sound agent (all optional):
 
-    # macOS (Homebrew)
-    brew install ffmpeg
+- `WHISPER_URL`: Base URL for the Whisper HTTP server (default `http://localhost:9002`).
+- `WHISPER_MODEL`: Model name sent to Whisper (default `large-v3`).
+- `WHISPER_TIMEOUT`: Seconds to wait for Whisper before failing (default `90`).
 
-    # Windows (Chocolatey)
-    choco install ffmpeg
+### Local Whisper Server (openai-whisper)
 
-    # Windows (Scoop)
-    scoop install ffmpeg
-    ```
+Instead of relying on the `whisper.cpp` Docker image, we now reuse the official
+openai-whisper package directly. The helper script `start-whisper.sh` wraps a
+small FastAPI server (`backend/scripts/whisper_server.py`) that mimics
+OpenAI's `POST /v1/audio/transcriptions` endpoint.
 
-  - Install the Python deps (includes `openai-whisper` and PyTorch):
-    ```bash
-    pip install -r backend/requirements.txt
-    ```
-    (If you prefer managing dependencies manually, run `pip install -U openai-whisper`
-    as described in the official Whisper README.)
+1. **Install the Python package and system dependencies**
+
+   - Install ffmpeg (required by Whisper):
+
+     ```bash
+     # Ubuntu / Debian
+     sudo apt update && sudo apt install ffmpeg
+
+     # Arch Linux
+     sudo pacman -S ffmpeg
+
+     # macOS (Homebrew)
+     brew install ffmpeg
+
+     # Windows (Chocolatey)
+     choco install ffmpeg
+
+     # Windows (Scoop)
+     scoop install ffmpeg
+     ```
+
+   - Install the Python deps (includes `openai-whisper` and PyTorch):
+     ```bash
+     pip install -r backend/requirements.txt
+     ```
+     (If you prefer managing dependencies manually, run `pip install -U openai-whisper`
+     as described in the official Whisper README.)
 
 2. **Start the local Whisper server**
 
@@ -261,97 +281,3 @@ sound agent simply issues HTTP requests against `WHISPER_URL`.
      -F "audio=@backend/tests/speed-talking.wav"
    ```
    When you see a transcript, post the same file inside an NLIP request to the compose-hosted backend to exercise the full ASR → translation path.
-
-### Image flow
-
-Images can be included in the same NLIP `process` payload as other messages. Each image message should be a message object with:
-
-- format: `image/base64`
-- content: the raw base64 image bytes (no data URI prefix)
-- label: optional client label (server will add analysis/translation labels)
-
-When the backend receives an image message it:
-
-1. Preserves the session correlator token with the message.
-2. Forwards the image base64 to the configured image recognition agent (LlavaImageRecognitionAgent) which POSTs to the Ollama image endpoint.
-3. Receives an English analysis result (pivot locale) from the agent and appends it as an internal message labeled `analysis:<pivot_locale>` (pivot locale defaults to `en`).
-4. Translates the analysis text back into the user's locale and returns it as a `analysis:<user_locale>` message.
-5. Returns the full message list to the client, preserving correlator tokens on responses.
-
-Note: the image agent expects plain base64 image data and uses the same HTTP/timeouts pattern as other agents (httpx, 60s default).
-
-### Intended message format
-
-The NLIP protocol uses a simple messages list. Each message is a JSON object with these fields:
-
-- `format` (string): mime-like hint for the content. Common values:
-  - `text/plain` — plain text user messages
-  - `image/base64` — base64-encoded image payloads
-- `content` (string): message payload (text or base64)
-- `label` (string): semantic tag such as:
-  - `translation:<locale>` — a translation into <locale>
-  - `analysis:<locale>` — an analyzed/observed result in <locale>
-
-Example payload shape (abridged):
-{
-"messages": [
-{ "format": "text/plain", "content": "How are my crops?", "label": "user" },
-{ "format": "image/base64", "content": "<raw-base64>", "label": "image" },
-{ "format": "text/plain", "content": "How are my crops? (en)", "label": "translation:en" },
-{ "format": "text/plain", "content": "Leaf rust detected (en)", "label": "analysis:en" },
-{ "format": "text/plain", "content": "Kurundi imewe (lg)", "label": "analysis:lg" }
-]
-}
-
-Service guarantees:
-
-- The backend will attach translation/analysis labels and keep the pivot (default `en`) for internal reasoning.
-- Session correlator tokens are preserved on forwarded and returned messages so clients can correlate responses.
-- Tests and agents expect the `messages` list and the labeling conventions above; changing these requires updating tests and consumers.
-
-### Image flow
-
-Images can be included in the same NLIP `process` payload as other messages. Each image message should be a message object with:
-
-- format: `image/base64`
-- content: the raw base64 image bytes (no data URI prefix)
-- label: optional client label (server will add analysis/translation labels)
-
-When the backend receives an image message it:
-
-1. Preserves the session correlator token with the message.
-2. Forwards the image base64 to the configured image recognition agent (LlavaImageRecognitionAgent) which POSTs to the Ollama image endpoint.
-3. Receives an English analysis result (pivot locale) from the agent and appends it as an internal message labeled `analysis:<pivot_locale>` (pivot locale defaults to `en`).
-4. Translates the analysis text back into the user's locale and returns it as a `analysis:<user_locale>` message.
-5. Returns the full message list to the client, preserving correlator tokens on responses.
-
-Note: the image agent expects plain base64 image data and uses the same HTTP/timeouts pattern as other agents (httpx, 60s default).
-
-### Intended message format
-
-The NLIP protocol uses a simple messages list. Each message is a JSON object with these fields:
-
-- `format` (string): mime-like hint for the content. Common values:
-  - `text/plain` — plain text user messages
-  - `image/base64` — base64-encoded image payloads
-- `content` (string): message payload (text or base64)
-- `label` (string): semantic tag such as:
-  - `translation:<locale>` — a translation into <locale>
-  - `analysis:<locale>` — an analyzed/observed result in <locale>
-
-Example payload shape (abridged):
-{
-"messages": [
-{ "format": "text/plain", "content": "How are my crops?", "label": "user" },
-{ "format": "image/base64", "content": "<raw-base64>", "label": "image" },
-{ "format": "text/plain", "content": "How are my crops? (en)", "label": "translation:en" },
-{ "format": "text/plain", "content": "Leaf rust detected (en)", "label": "analysis:en" },
-{ "format": "text/plain", "content": "Kurundi imewe (lg)", "label": "analysis:lg" }
-]
-}
-
-Service guarantees:
-
-- The backend will attach translation/analysis labels and keep the pivot (default `en`) for internal reasoning.
-- Session correlator tokens are preserved on forwarded and returned messages so clients can correlate responses.
-- Tests and agents expect the `messages` list and the labeling conventions above; changing these requires updating tests and consumers.
