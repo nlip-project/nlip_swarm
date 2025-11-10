@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import sys
 from pathlib import Path
@@ -217,3 +218,39 @@ def test_sound_agent_handles_none_payload_with_missing_audio():
     agent = SoundAgent(whisper_url="http://whisper.test")
     with pytest.raises(MissingAudioError):
         agent.process(None)
+
+
+def test_sound_agent_handle_uses_agent_interface(monkeypatch):
+    audio_bytes = base64.b64encode(b"audio").decode("ascii")
+
+    message = {
+        "format": "bundle",
+        "subformat": "task.audio.transcribe.en",
+        "submessages": [
+            {
+                "format": "audio",
+                "label": "sample",
+                "content": {
+                    "encoding": "base64",
+                    "data": audio_bytes,
+                    "language": "es",
+                },
+            }
+        ],
+    }
+
+    translator = StubTranslator()
+    agent = SoundAgent(whisper_url="http://whisper.test", translator=translator)
+
+    def fake_post(*args, **kwargs):
+        return DummyResponse({"text": "hola mundo", "language": "es"})
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    async def _run_handle():
+        return await agent.handle(message)
+
+    result = asyncio.run(_run_handle())
+
+    assert result["language"] == "en"
+    assert translator.calls == [("hola mundo", "en")]

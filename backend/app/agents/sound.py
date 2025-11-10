@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import asyncio
 import base64
 import binascii
 import os
@@ -7,6 +10,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 import httpx
 
+from .base import Agent
 from .translation import OllamaTranslationAgent, TranslationError
 
 try:  # pragma: no cover - optional dependency for local dev
@@ -48,7 +52,7 @@ class Transcript:
     raw_response: Dict[str, Any]
 
 
-class SoundAgent:
+class SoundAgent(Agent):
     """
     Convert NLIP audio payloads into localized text responses by chaining:
 
@@ -64,6 +68,15 @@ class SoundAgent:
         timeout: float = 90.0,
         translator: Optional[OllamaTranslationAgent] = None,
     ) -> None:
+        super().__init__(
+            name="whisper_transcriber",
+            capabilities=[
+                "task.audio.transcribe",
+                "task.audio.transcribe.*",
+                "task.audio.*",
+            ],
+            llm=None,
+        )
         self.whisper_url = (whisper_url or os.getenv("WHISPER_URL", "http://localhost:9002")).rstrip("/")
         self.whisper_endpoint = whisper_endpoint
         self.whisper_model = whisper_model
@@ -103,6 +116,15 @@ class SoundAgent:
                 raise SoundAgentError(f"Translation failed: {exc}") from exc
 
         return self._build_response(final_text, final_language, transcripts)
+
+    async def handle(self, message: Any) -> Any:
+        """
+        Asynchronous wrapper so the agent fits the generic Agent interface used
+        by the SwarmManager. All heavy lifting stays in the synchronous
+        `process` method to keep the existing tests intact.
+        """
+        target_locale = self._infer_target_locale(message)
+        return await asyncio.to_thread(self.process, message, target_locale=target_locale)
 
     def _extract_audio_payloads(self, payload: Any) -> List[AudioPayload]:
         candidates = list(self._iter_message_candidates(payload))
@@ -155,6 +177,23 @@ class SoundAgent:
         if isinstance(value, str) and value.lower() == "audio":
             return True
         return str(fmt).lower() == "audio"
+    
+    def _infer_target_locale(self, payload: Any) -> Optional[str]:
+        """
+        Attempt to pull the requested target language off common NLIP fields.
+        Falls back to None so `process` will return the Whisper-detected locale.
+        """
+        subformat = self._resolve_attr(payload, "subformat")
+        if isinstance(subformat, str):
+            parts = subformat.split(".")
+            if len(parts) >= 4 and parts[0] == "task" and parts[1] == "audio" and parts[2] == "transcribe":
+                return parts[3]
+            if len(parts) >= 3 and parts[0] == "audio" and parts[1] == "transcribe":
+                return parts[2]
+        lang = self._resolve_attr(payload, "language")
+        if isinstance(lang, str) and lang:
+            return lang
+        return None
 
     def _decode_audio_content(self, content: Any, label: str) -> AudioPayload:
         if isinstance(content, (bytes, bytearray)):
