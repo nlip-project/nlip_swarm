@@ -7,6 +7,7 @@ from app.nlip_adapter import from_dict, to_dict
 from app.registry import AgentRegistry
 from app.agents.swarm_manager import SwarmManager
 from app.agents.translation import OllamaTranslationAgent
+from app.agents.textAgent import LLamaTextAgent
 from langchain_ollama import ChatOllama
 import os
 
@@ -24,10 +25,15 @@ translation_agent = (OllamaTranslationAgent(
     model=OLLAMA_MODEL,
     base_url=OLLAMA_URL,
 ))
+text_agent = (LLamaTextAgent(
+    model=OLLAMA_MODEL,
+    base_url=OLLAMA_URL,
+))
 
 
 registry = AgentRegistry([
     translation_agent,
+    text_agent,
 ])
 
 swarm_manager = SwarmManager(registry=registry, router_llm=router_llm, translator=translation_agent)
