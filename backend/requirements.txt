@@ -1,14 +1,3 @@
-<<<<<<< HEAD
-pytest
-httpx
-uvicorn[standard]
-fastapi
-pydantic
-langdetect
-nlip_sdk
-langchain
-langchain-ollama
-=======
 annotated-doc==0.0.3
 annotated-types==0.7.0
 anyio==4.11.0
@@ -26,6 +15,7 @@ idna==3.11
 iniconfig==2.3.0
 Jinja2==3.1.6
 langdetect==1.0.9
+langchain_ollama=1.0.0
 MarkupSafe==3.0.3
 mpmath==1.3.0
 networkx==3.5
@@ -50,4 +40,3 @@ typing_extensions==4.15.0
 uvicorn==0.38.0
 watchfiles==1.1.1
 websockets==15.0.1
->>>>>>> 787eddfd44bfef63bd9cb58c5c9bc37ba634ae9e
