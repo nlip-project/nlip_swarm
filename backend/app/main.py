@@ -7,6 +7,7 @@ from app.nlip_adapter import from_dict, to_dict
 from app.registry import AgentRegistry
 from app.agents.swarm_manager import SwarmManager
 from app.agents.translation import OllamaTranslationAgent
+from app.agents.sound import SoundAgent
 from langchain_ollama import ChatOllama
 import os
 
@@ -20,14 +21,15 @@ router_llm = ChatOllama(
     temperature=ROUTER_TEMPERATURE,
 )
 
-translation_agent = (OllamaTranslationAgent(
+translation_agent = OllamaTranslationAgent(
     model=OLLAMA_MODEL,
     base_url=OLLAMA_URL,
-))
-
+)
+sound_agent = SoundAgent(translator=translation_agent)
 
 registry = AgentRegistry([
     translation_agent,
+    sound_agent,
 ])
 
 swarm_manager = SwarmManager(registry=registry, router_llm=router_llm, translator=translation_agent)
