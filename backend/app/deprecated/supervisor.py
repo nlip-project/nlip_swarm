@@ -259,4 +259,3 @@ class TranslationApplication(SafeApplication):
         s.set_correlator()
         return s
 app = setup_server(TranslationApplication())
-
