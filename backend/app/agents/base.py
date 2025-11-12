@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 import litellm
 
 load_dotenv()
-MODEL = "llama3.2:3b"
+MODEL = "ollama_chat/llama3.2:3b"
 
 # PROMPTS
 TOOLS_INSTRUCTIONS = """

@@ -2,8 +2,8 @@ import os
 import argparse
 
 from nlip_sdk.nlip import NLIP_Factory, NLIP_Message
-from agents.coordinator_nlip_agent import CoordinatorNlipAgent
-from http_server.nlip_session_server import SessionManager, NlipSessionServer
+from ..agents.coordinator_nlip_agent import CoordinatorNlipAgent
+from ..http_server.nlip_session_server import SessionManager, NlipSessionServer
 import uvicorn
 
 class NlipManager(SessionManager):

@@ -27,12 +27,10 @@ from nlip_sdk.nlip import NLIP_Factory, NLIP_Message
 from app.agents.nlip_agent import NlipAgent
 from app.http_client.nlip_async_client import NlipAsyncClient
 
-from app.system.mount_spec import MOUNT_SPEC
-
 sessions = {}
 
 logger = logging.getLogger("NLIP")
-MODEL = "llama3.2:3b"
+MODEL = "ollama_chat/llama3.2:3b"
 
 async def connect_to_server(url: AnyHttpUrl):
     try:

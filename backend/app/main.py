@@ -1,30 +1,22 @@
-from __future__ import annotations
+import asyncio
+import sys
 
-"""
-Coordinator NLIP server entrypoint.
+from .servers.basic_server import app as basic
+from .servers.coordinator_server import app as coord
+from .servers.translate_server import app as translate
+from .system.mount_spec import MountSpec
 
-Replaces the previous /nlip route with a sessioned Coordinator that discovers
-agents via addresses-only MOUNT_SPEC and communicates using connect/send tools.
-"""
+if __name__ == "__main__":
+    mount_spec = [
+        (coord, "http://0.0.0.0:8024/"),
+        (basic, "mem://basic/"),
+        (translate, "mem://translate/"),
+    ]
 
-from fastapi import FastAPI
+    ms = MountSpec(mount_spec)
 
-from app.agents.coordinator_nlip_agent import CoordinatorNlipAgent
-from app.http_server.nlip_session_server import NlipSessionServer, SessionManager
-from app.system.mount_spec import MOUNT_SPEC, register_mem_apps
-
-
-# Ensure in-proc mem:// apps are available for transport
-register_mem_apps(MOUNT_SPEC)
-
-
-class CoordinatorManager(SessionManager):
-    def __init__(self) -> None:
-        self.agent = CoordinatorNlipAgent("Coordinator")
-
-    async def process_nlip(self, msg):
-        return await self.agent.handle(msg)
-
-
-# Expose the sessioned Coordinator at /nlip
-app: FastAPI = NlipSessionServer("CoordinatorCookie", CoordinatorManager)
+    try:
+        asyncio.run(ms.runall())
+    except Exception as e:
+        print(f"Fatal error running servers: {e}", file=sys.stderr)
+        sys.exit(1)

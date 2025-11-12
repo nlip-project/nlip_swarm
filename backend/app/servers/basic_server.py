@@ -2,9 +2,9 @@ import os
 import argparse
 
 from nlip_sdk.nlip import NLIP_Factory, NLIP_Message
-from agents.base import Agent
+from ..agents.base import Agent
 
-from http_server.nlip_session_server import SessionManager, NlipSessionServer
+from ..http_server.nlip_session_server import SessionManager, NlipSessionServer
 import uvicorn
 
 class BasicManager(SessionManager):

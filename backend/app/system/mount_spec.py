@@ -1,55 +1,55 @@
-from __future__ import annotations
+import asyncio
+import uvicorn
+from urllib.parse import urlparse
+import logging
 
-"""
-Addresses-only mount specification for the swarm.
+from app import MEM_APP_TBL
 
-Users customize the swarm by editing MOUNT_SPEC to include any mix of:
- - mem://<name>      (in-process FastAPI apps registered in MEM_APP_TBL)
- - http://host[:port]/nlip
- - https://host[:port]/nlip
+logger = logging.getLogger("MOUNT_SPEC")
 
-On startup, the Coordinator session will discover agents by connecting
-to each address and asking for NLIP Capabilities.
-"""
+class MountSpec:
+    def __init__(self, mount_spec):
+        self.mount_spec = mount_spec
 
-from typing import Iterable
+    async def create_webserver(self, spec):
+        logger.info(f"MountSpec: CREATE_WEBSERVER: {spec}")
+        app = spec[0]
+        u = urlparse(spec[1])
 
-from fastapi import FastAPI
+        logger.debug(f"MountSpec: SCHEME: {u.scheme}")
 
-from app.system.mem_registry import asgi_register
+        if u.scheme == "http":
+            if u.port is None:
+                raise Exception("Port must be specified for http webserver")
 
+            server_config = uvicorn.Config(app, host="0.0.0.0", port=int(u.port), log_level="info")
+            server = uvicorn.Server(server_config)
+            logger.debug(f"MountSpec: SERVER:{server}")
+            return await server.serve()
+        
+        elif u.scheme == "mem":
+            MEM_APP_TBL[u.hostname] = app
+            return None
+        else:
+            raise Exception(f"Unrecognized webserver scheme: {u.scheme}")
+    
+    async def runall(self):
+        logger.debug("MountSpec: RUNALL")
 
-# Default set: in-proc translation + text agents
-MOUNT_SPEC: list[str] = [
-    "mem://translate",
-    "mem://text",
-]
+        servers = []
+        for spec in self.mount_spec:
+            server = self.create_webserver(spec)
+            logger.debug(f"MountSpec: GOT SERVER:{spec} {server}")
 
+            if not spec[1].startswith("mem:"):
+                servers.append(asyncio.create_task(server))
+            else:
+                await server
 
-def _maybe_import_mem_app(name: str) -> FastAPI | None:
-    """Import a known in-proc agent server app by mem name, if available."""
-    try:
-        if name == "translate":
-            from app.servers.translate_server import app as translate_app
-            return translate_app
-        if name == "text":
-            from app.servers.text_server import app as text_app
-            return text_app
-    except Exception:
-        return None
-    return None
+        try:
+            done, pending = await asyncio.wait(servers, return_when=asyncio.FIRST_COMPLETED)
+        except asyncio.CancelledError:
+            logger.debug(f"MountSpec: ASYNCIO.WAIT was cancelled")
 
-
-def register_mem_apps(addresses: Iterable[str]) -> None:
-    """Ensure mem:// apps referenced in addresses are present in MEM_APP_TBL.
-
-    This helper imports known server wrappers and registers their ASGI apps
-    under the mem name so mem:// transport can reach them in-process.
-    """
-    for addr in addresses:
-        if addr.startswith("mem://"):
-            name = addr.split("://", 1)[1]
-            app = _maybe_import_mem_app(name)
-            if app is not None:
-                asgi_register(name, app)
-
+        for pending_task in pending:
+            pending_task.cancel("Another service died, server is shutting down")

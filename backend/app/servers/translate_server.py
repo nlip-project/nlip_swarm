@@ -2,8 +2,8 @@ import os
 import argparse
 
 from nlip_sdk.nlip import NLIP_Factory, NLIP_Message
-from agents.translation import TranslationNlipAgent
-from http_server.nlip_session_server import SessionManager, NlipSessionServer
+from ..agents.translation import TranslationNlipAgent
+from ..http_server.nlip_session_server import SessionManager, NlipSessionServer
 import uvicorn
 
 class TranslationManager(SessionManager):

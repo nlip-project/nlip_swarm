@@ -6,7 +6,7 @@ import httpx
 from .nlip_agent import NlipAgent
 
 TRANSLATION_API="https://libretranslate.com/translate"
-MODEL="llama3.2:3b"
+MODEL="ollama_chat/llama3.2:3b"
 
 async def make_lt_request(text: str, target_lang: str, source_lang: str = "auto") -> str | None:
     url = TRANSLATION_API
