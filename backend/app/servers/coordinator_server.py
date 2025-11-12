@@ -11,7 +11,7 @@ class NlipManager(SessionManager):
         super().__init__(**kwargs)
 
         self.myAgent = CoordinatorNlipAgent(
-            "Steve"
+            "Coordinator"
         )
 
     async def process_nlip(self, msg: NLIP_Message) -> NLIP_Message:

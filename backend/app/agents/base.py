@@ -14,10 +14,13 @@ from litellm import completion
 from dotenv import load_dotenv
 
 import litellm
+litellm._turn_on_debug() #pyright: ignore
+
 
 load_dotenv()
 #MODEL = "openai/gpt-4o-mini"
-MODEL = "ollama_chat/llama3.2:3b"
+#MODEL = "ollama_chat/llama3.2:3b"
+MODEL = "cerebras/llama3.3-70b"
 
 # PROMPTS
 TOOLS_INSTRUCTIONS = """

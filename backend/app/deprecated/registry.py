@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Dict, List
-from .agents.base import Agent
+from ..agents.base import Agent
 
 class AgentRegistry:
     """
