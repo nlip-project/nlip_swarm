@@ -2,18 +2,18 @@ import os
 import argparse
 
 from nlip_sdk.nlip import NLIP_Factory, NLIP_Message
-from agents.translation import TranslationNlipAgent
+from agents.coordinator_nlip_agent import CoordinatorNlipAgent
 from http_server.nlip_session_server import SessionManager, NlipSessionServer
 import uvicorn
 
-class TranslationManager(SessionManager):
+class NlipManager(SessionManager):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        self.myAgent = TranslationNlipAgent(
-            "translation"
+        self.myAgent = CoordinatorNlipAgent(
+            "Steve"
         )
-    
+
     async def process_nlip(self, msg: NLIP_Message) -> NLIP_Message:
         text = msg.extract_text()
 
@@ -24,7 +24,7 @@ class TranslationManager(SessionManager):
                 msg.add_text(res)
             return msg
         except Exception as e:
-            error_msg = f"Exception: {e}"
-            return NLIP_Factory.create_text(error_msg)
+            error = f"Exception: {e}"
+            return NLIP_Factory.create_text(error)
         
-app = NlipSessionServer("TranslationCookie", TranslationManager)
+app = NlipSessionServer("NlipCoordinatorCookie", NlipManager)

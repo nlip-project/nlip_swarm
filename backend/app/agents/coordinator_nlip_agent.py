@@ -16,131 +16,79 @@ CAP1:desc, CAP2:desc, ...
 """
 
 import asyncio
-from typing import Any, Dict, List
+import logging
+from typing import Optional, Any
 from urllib.parse import urlparse
+import httpx
+import json
+from pydantic import AnyHttpUrl
 
 from nlip_sdk.nlip import NLIP_Factory, NLIP_Message
-
-from app.agents.base import Agent
+from app.agents.nlip_agent import NlipAgent
 from app.http_client.nlip_async_client import NlipAsyncClient
+
 from app.system.mount_spec import MOUNT_SPEC
 
+sessions = {}
 
-CAP_QUERY = "What are your NLIP Capabilities?"
+logger = logging.getLogger("NLIP")
+MODEL = "llama3.2:3b"
 
+async def connect_to_server(url: AnyHttpUrl):
+    try:
+        parsed_url = urlparse(str(url))
+        scheme = parsed_url.scheme
+        netloc = parsed_url.netloc
+    except Exception as e:
+        return f"Exception: {e}"
+    
+    await asyncio.sleep(1.0)
+    client = NlipAsyncClient.create_from_url(f"{scheme}://{netloc}/nlip")
 
-class CoordinatorNlipAgent(Agent):
-    def __init__(self, name: str = "Coordinator", model: str | None = None):
-        super().__init__(name=name, model=(model or self.model))
+    hashkey = f"{scheme}://{netloc}"
+    sessions[hashkey] = client
 
-        # url hashkey -> client
-        self._clients: Dict[str, NlipAsyncClient] = {}
-        # learned directory: name -> { url, capabilities: [str] }
-        self._directory: Dict[str, Dict[str, Any]] = {}
+    logger.info(f"Saved {netloc} with client {client}")
+    return f"Connected to {scheme}://{netloc}/"
 
-        # Add a guiding instruction for tool usage
-        self.add_instruction(
-            "You can contact NLIP Agents using two tools: connect_to_server(url) then send_to_server(url, message)."
-        )
+async def send_to_server(url: AnyHttpUrl, message: str) -> dict:
+    parsed_url = urlparse(str(url))
+    scheme = parsed_url.scheme
+    netloc = parsed_url.netloc
+    
+    hashkey = f"{scheme}://{netloc}"
+    client = sessions[hashkey]
 
-        # Register tools
-        self.add_tool(self.connect_to_server)  # type: ignore[arg-type]
-        self.add_tool(self.send_to_server)     # type: ignore[arg-type]
+    nlip_message = NLIP_Factory.create_text(message)
+    logger.info(f"Sending message: {message}")
+    nlip_response = await client.async_send(nlip_message)
+    logger.info(f"Received response: {nlip_response.model_dump()}")
 
-        # Perform discovery lazily before first request
-        self._discovered = False
+    return nlip_response.extract_text()
 
-    # ------------- tools -------------
-    async def connect_to_server(self, url: str) -> str:
-        """Connect to an NLIP Agent server at the given URL and cache the session."""
-        try:
-            parsed = urlparse(url)
-            if parsed.scheme not in ("http", "https", "mem"):
-                return f"Unsupported scheme: {parsed.scheme}"
-            key = f"{parsed.scheme}://{parsed.netloc if parsed.netloc else parsed.hostname}"
-            base = f"{parsed.scheme}://{parsed.netloc if parsed.netloc else parsed.hostname}/nlip"
-            self._clients[key] = NlipAsyncClient.create_from_url(base)
-            return f"Connected to {key}/"
-        except Exception as e:
-            return f"Exception: {e}"
+NLIP_COORDINATOR_PROMPT = """
+You are an advanced NLIP Agent with the capability to speak to other NLIP Agents.
+You have two tools for this purpose:
+- connect_to_server
+- send_to_server
 
-    async def send_to_server(self, url: str, message: str) -> str:
-        """Send a text NLIP message to a connected server and return its response as text."""
-        parsed = urlparse(url)
-        key = f"{parsed.scheme}://{parsed.netloc if parsed.netloc else parsed.hostname}"
-        client = self._clients.get(key)
-        if client is None:
-            # Attempt implicit connect
-            ok = await self.connect_to_server(url)
-            if not ok.startswith("Connected to "):
-                return ok
-            client = self._clients.get(key)
-            if client is None:
-                return "Connection error"
+When you are asked to connect to a server at a specific URL, use the connect_to_server tool with that URL to establish a connection.
+If the response to that tool begins with: "Connected to ", then the connection is valid.  Otherwise, it is not.
+For a valid connection, you should follow the connect_to_server tool call with a tool call of send_to_server to the same URL with the string: "What are your NLIP Capabilities?"
+The remote Agent will respond with its [NAME] and capabilities.  Take note of this information, especially the NAME.  In future requests, if a user asks for you to send a request to NAME you should use the send_to_server tool with the URL that was associated with NAME and use the request as the msg: argument.
+"""
 
-        msg = NLIP_Factory.create_text(message)
-        resp = await client.async_send(msg)
-        # Return text view for simplicity
-        try:
-            return resp.extract_text()
-        except Exception:
-            # Fallback to raw dict
-            return str(resp.model_dump())
+class CoordinatorNlipAgent(NlipAgent):
+    def __init__(self,
+        name: str,
+        model: str = MODEL,
+        instruction: Optional[str] = None,
+        tools = [connect_to_server, send_to_server],
+    ):
+        super().__init__(name=name, model=model, tools=tools)
 
-    # ------------- discovery -------------
-    async def _discover_agents(self) -> None:
-        if self._discovered:
-            return
-        learned: List[str] = []
-        for addr in MOUNT_SPEC:
-            try:
-                # Connect and ask for capabilities
-                ok = await self.connect_to_server(addr)
-                if not ok.startswith("Connected to "):
-                    continue
-                info = await self.send_to_server(addr, CAP_QUERY)
-                name, caps = self._parse_capabilities(info)
-                if name:
-                    self._directory[name] = {"url": addr, "capabilities": caps}
-                    learned.append(f"{name} -> {addr} (Capabilities: {', '.join(caps)})")
-            except Exception:
-                continue
+        self.add_instruction("You are an agent with tools for querying other NLIP Agent Servers.")
+        self.add_instruction(NLIP_COORDINATOR_PROMPT)
 
-        if learned:
-            self.add_instruction(
-                "Known NLIP Agents:\n" + "\n".join(learned) +
-                "\nUse connect_to_server(url) then send_to_server(url, message) to collaborate."
-            )
-        self._discovered = True
-
-    def _parse_capabilities(self, text: str) -> tuple[str | None, list[str]]:
-        name: str | None = None
-        caps: list[str] = []
-        if not text:
-            return (None, caps)
-        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-        if not lines:
-            return (None, caps)
-        if lines[0].lower().startswith("agent:"):
-            name = lines[0].split(":", 1)[1].strip() or None
-            if len(lines) > 1:
-                # Comma-separated cap:desc pairs
-                parts = [p.strip() for p in lines[1].split(",") if p.strip()]
-                for p in parts:
-                    k = p.split(":", 1)[0].strip()
-                    if k:
-                        caps.append(k)
-        return (name, caps)
-
-    # ------------- NLIP entry -------------
-    async def handle(self, message: NLIP_Message) -> NLIP_Message:
-        # Ensure discovery is performed once per session
-        await self._discover_agents()
-
-        text = message.extract_text()
-        results = await self.process_query(text)
-        out = "\n".join(results)
-        resp = NLIP_Factory.create_text(out, label=getattr(message, "label", ""))
-        resp.messagetype = "response"
-        return resp
-
+        if instruction:
+            self.add_instruction(instruction)
