@@ -1,9 +1,20 @@
+import asyncio
+import logging
+from .nlip_agent import NlipAgent
+
+
 import os
 from typing import Optional
 import httpx
 
 from nlip_sdk.nlip import AllowedFormats, NLIP_Message, NLIP_Factory
 from .base import Agent
+
+#TOOL Definition
+
+def 
+
+
 
 class LLamaTextAgent(Agent):
     """

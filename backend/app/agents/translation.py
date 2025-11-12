@@ -1,129 +1,71 @@
 import os
-import logging
+import asyncio
 from typing import Optional
-from .base import Agent
-from nlip_sdk.nlip import NLIP_Message, NLIP_Factory
-from langdetect import detect, LangDetectException
 
-import httpx
+from litellm import completion
 
-logging.basicConfig(level=logging.DEBUG)
-log = logging.getLogger(__name__)
+from .nlip_agent import NlipAgent
+from .base import MODEL
 
 
 class TranslationError(Exception):
-    """Raised when the Ollama translation agent cannot complete a request."""
+    """Raised when the translation tool cannot complete a request."""
 
 
-def _infer_locale(subformat: Optional[str]) -> Optional[str]:
-    if not subformat:
-        return None
-    parts = subformat.split(".")
-    if len(parts) >= 3 and parts[0] == "task" and parts[1] == "translate":
-        return parts[2]
-    if len(parts) >= 2 and parts[0] == "translate":
-        return parts[1]
-    return None
+async def _llm_translate_request(model: str, text: str, target_lang: str) -> str:
+    """Helper: perform a litellm completion to translate text to target_locale.
 
-class OllamaTranslationAgent(Agent):
+    Uses a strict system instruction so the result is just the translated text.
     """
-    Simple translation agent that delegates translation requests to a locally
-    running Ollama instance.
+    if not text:
+        raise TranslationError("Cannot translate empty text input.")
+
+    system = (
+        "You are a translation engine. Translate the user text into the "
+        f"locale '{target_lang}'. Output only the translation, no extras."
+    )
+    user = f"Text to translate:\n{text}"
+
+    def _call():
+        resp = completion(model=model, messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        stream=False)
+        msg = getattr(resp.choices[0], "message", None)
+        content = getattr(msg, "content", None) if msg is not None else None
+        if not content:
+            raise TranslationError("Empty response from model")
+        return str(content).strip()
+
+    return await asyncio.to_thread(_call)
+
+
+# TOOL Definition
+async def get_translation(text: str, target_lang: str) -> str:
+    """Translate the provided text into the target language using the configured LLM model.
+
+    Args:
+        text: Source text to translate
+        target_lang: Language to translate to (e.g., 'en', 'es-ES')
     """
+    model = os.getenv("AGENT_MODEL", MODEL)
+    return await _llm_translate_request(model, text, target_lang or "en")
+
+
+class TranslationNlipAgent(NlipAgent):
+    """NLIP Translation Agent exposing a single translation tool."""
 
     def __init__(
         self,
-        *,
-        base_url: Optional[str] = None,
-        model: Optional[str] = None,
-        timeout: float = 30.0,
+        name: str = "Translate",
+        model: str = MODEL,
+        instruction: Optional[str] = None,
+        tools = [get_translation],
     ) -> None:
-        super().__init__(
-            name="ollama_translation",
-            capabilities=["task.translate.*", "task.translate"],
-            llm=None,
+        super().__init__(name=name, model=model, instruction=instruction, tools=tools)
+
+        self.add_instruction(
+            "You have one tool: get_translation(text, target_locale). "
+            "Use it to translate user text into the specified target locale and return only the translation."
         )
-        self.base_url = (base_url or os.getenv("OLLAMA_URL", "http://localhost:11434")).rstrip("/")
-        self.model = model or "llama3.1"
-        self.timeout = timeout
-
-    async def handle(self, message: NLIP_Message) -> NLIP_Message:
-        text = message.content if isinstance(message.content, str) else ("" if message.content is None else str(message.content))
-        target = _infer_locale(getattr(message, "subformat", None)) or "en"
-
-        try:
-            translated = self.translate(text, target_locale=target)
-            return NLIP_Factory.create_text(translated, label=getattr(message, "label", ''))
-        except Exception as e:
-            err = NLIP_Factory.create_text(f"translation failed: {e}", label=getattr(message, "label", ''))
-            err.messagetype = "error"
-            return err
-
-    def translate(self, text: str, target_locale: Optional[str] = None) -> str:
-        """
-        Translate the provided text into the desired locale using Ollama.
-
-        Parameters
-        ----------
-        text:
-            The source text to translate.
-        target_locale:
-            Locale to translate into (e.g., 'en', 'es-ES'). Defaults to English.
-
-        Returns
-        -------
-        str
-            The translated text content.
-        """
-        if not text:
-            raise TranslationError("Cannot translate empty text input.")
-
-        locale = target_locale or "en"
-        prompt = self._build_prompt(text=text, locale=locale)
-        url = f"{self.base_url}/api/generate"
-        payload = {
-            "model": self.model,
-            "prompt": prompt,
-            "stream": False,
-        }
-
-        try:
-            response = httpx.post(url, json=payload, timeout=self.timeout)
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            raise TranslationError(f"Ollama request failed: {exc}") from exc
-
-        try:
-            data = response.json()
-        except ValueError as exc:
-            raise TranslationError("Received non-JSON response from Ollama.") from exc
-
-        translated = data.get("response")
-        if not translated:
-            raise TranslationError("Ollama response did not include translated text.")
-
-        return translated.strip()
-
-    @staticmethod
-    def _build_prompt(*, text: str, locale: str) -> str:
-        """
-        Create the prompt sent to Ollama. The prompt constrains the response so
-        the agent returns only the translated text.
-        """
-        return (
-            "You are a translation engine. Translate the user text into the "
-            f"locale '{locale}'. Output the translation verbatim and nothing else. "
-            "Do not add greetings, apologies, or explanations. If you cannot translate, "
-            "respond with exactly '[translation-error]'.\n\n"
-            "User text:\n"
-            f"{text}\n\n"
-            "Translated text:"
-        )
-    
-    def detect_language(self, text: str) -> str:
-        try:
-            return detect(text)
-        except LangDetectException as e:
-            raise TranslationError(f"Language detection failed: {e}") from e
-
-        
