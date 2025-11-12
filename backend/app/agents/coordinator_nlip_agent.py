@@ -26,10 +26,13 @@ from pydantic import AnyHttpUrl
 from nlip_sdk.nlip import NLIP_Factory, NLIP_Message
 from app.agents.nlip_agent import NlipAgent
 from app.http_client.nlip_async_client import NlipAsyncClient
+from dotenv import load_dotenv
 
+load_dotenv()
 sessions = {}
 
 logger = logging.getLogger("NLIP")
+#MODEL = "openai/gpt-4o-mini"
 MODEL = "ollama_chat/llama3.2:3b"
 
 async def connect_to_server(url: AnyHttpUrl):

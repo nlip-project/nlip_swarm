@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 import litellm
 
 load_dotenv()
+#MODEL = "openai/gpt-4o-mini"
 MODEL = "ollama_chat/llama3.2:3b"
 
 # PROMPTS

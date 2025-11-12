@@ -2,7 +2,12 @@ import asyncio
 import logging
 from typing import Callable, Optional
 from .base import Agent
-from .base import MODEL
+from dotenv import load_dotenv
+
+load_dotenv()
+#MODEL = "openai/o4-mini"
+MODEL = "ollama_chat/llama3.2:3b"
+
 
 logger = logging.getLogger("NLIP")
 

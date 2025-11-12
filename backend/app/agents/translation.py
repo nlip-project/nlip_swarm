@@ -4,8 +4,13 @@ from typing import Optional, Any
 import httpx
 
 from .nlip_agent import NlipAgent
+from dotenv import load_dotenv
+
+load_dotenv()
 
 TRANSLATION_API="https://libretranslate.com/translate"
+
+#MODEL="openai/o4-mini"
 MODEL="ollama_chat/llama3.2:3b"
 
 async def make_lt_request(text: str, target_lang: str, source_lang: str = "auto") -> str | None:
