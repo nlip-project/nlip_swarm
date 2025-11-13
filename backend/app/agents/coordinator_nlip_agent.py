@@ -23,7 +23,7 @@ import httpx
 import json
 from pydantic import AnyHttpUrl
 
-from nlip_sdk.nlip import NLIP_Factory, NLIP_Message
+from nlip_sdk.nlip import NLIP_Factory
 from app.agents.nlip_agent import NlipAgent
 from app.http_client.nlip_async_client import NlipAsyncClient
 

@@ -11,7 +11,7 @@ class TranslationManager(SessionManager):
         super().__init__(**kwargs)
 
         self.myAgent = TranslationNlipAgent(
-            "translation"
+            "translate"
         )
     
     async def process_nlip(self, msg: NLIP_Message) -> NLIP_Message:

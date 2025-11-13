@@ -14,7 +14,7 @@ from litellm import completion
 from dotenv import load_dotenv
 
 import litellm
-litellm._turn_on_debug() #pyright: ignore
+#litellm._turn_on_debug() #pyright: ignore
 
 
 load_dotenv()

@@ -1,11 +1,11 @@
 from __future__ import annotations
 import asyncio
-from .base import Agent
+from ..agents.base import Agent
 from collections import defaultdict, deque
 from nlip_sdk.nlip import NLIP_Message, NLIP_Factory, AllowedFormats, NLIP_SubMessage
-from ..deprecated.registry import AgentRegistry
-from ..deprecated.router import route
-from .translation import TranslationError, OllamaTranslationAgent
+from .registry import AgentRegistry
+from .router import route
+from ..agents.translation import TranslationError, OllamaTranslationAgent
 from typing import List, Deque, List, Tuple, Dict
 
 class SwarmManager(Agent):
