@@ -1,256 +1,105 @@
-import asyncio
 import base64
 import sys
 from pathlib import Path
+
+import httpx
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import httpx
-import pytest
-
-from backend.app.agents import sound as sound_module
-sound_module.nlip = None
-
-from backend.app.agents.sound import (
-    AudioDecodingError,
-    MissingAudioError,
-    SoundAgent,
-    SoundAgentError,
-    TranscriptionServiceError,
-)
-from backend.app.agents.translation import TranslationError
+from backend.app.agents.sound import transcribe_audio
 
 
 class DummyResponse:
-    def __init__(self, json_data=None, status_ok=True):
-        self._json_data = json_data or {}
-        self._status_ok = status_ok
+    def __init__(self, data=None, status_ok=True):
+        self.data = data or {}
+        self.status_ok = status_ok
 
     def raise_for_status(self):
-        if not self._status_ok:
+        if not self.status_ok:
             raise httpx.HTTPStatusError(
-                "error",
+                "boom",
                 request=httpx.Request("POST", "http://test"),
                 response=httpx.Response(500),
             )
 
     def json(self):
-        return self._json_data
+        return self.data
 
 
-class StubTranslator:
-    def __init__(self):
-        self.calls = []
+class DummyClient:
+    def __init__(self, response):
+        self.response = response
+        self.captured = None
 
-    def translate(self, text, target_locale=None):
-        self.calls.append((text, target_locale))
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc_info):
+        return False
+
+    async def post(self, url, *, data=None, files=None):
+        self.captured = {"url": url, "data": data, "files": files}
+        return self.response
+
+
+@pytest.mark.asyncio
+async def test_transcribe_audio_calls_whisper(monkeypatch):
+    audio = base64.b64encode(b"audio-bytes").decode()
+
+    dummy_client = DummyClient(
+        DummyResponse({"text": "hola mundo", "language": "es"})
+    )
+
+    monkeypatch.setattr(
+        "backend.app.agents.sound.httpx.AsyncClient", lambda timeout: dummy_client
+    )
+
+    result = await transcribe_audio(audio, language_hint="es")
+
+    assert "Transcript (es): hola mundo" in result
+    assert dummy_client.captured["data"]["language"] == "es"
+    assert dummy_client.captured["files"]["audio"][1] == base64.b64decode(audio)
+
+
+@pytest.mark.asyncio
+async def test_transcribe_audio_handles_translation(monkeypatch):
+    audio = base64.b64encode(b"audio").decode()
+    dummy_client = DummyClient(DummyResponse({"text": "bonjour", "language": "fr"}))
+
+    monkeypatch.setattr(
+        "backend.app.agents.sound.httpx.AsyncClient", lambda timeout: dummy_client
+    )
+
+    async def fake_translation(text, target_locale):
         return f"{text}::{target_locale}"
 
+    monkeypatch.setattr(
+        "backend.app.agents.sound.get_translation", fake_translation
+    )
 
-def test_sound_agent_process_transcribes_and_translates(monkeypatch):
-    audio_bytes = b"fake-audio-bytes"
-    message = {
-        "submessages": [
-            {
-                "format": "audio",
-                "label": "input-audio",
-                "content": {
-                    "encoding": "base64",
-                    "mimetype": "audio/wav",
-                    "language": "es",
-                    "data": base64.b64encode(audio_bytes).decode("ascii"),
-                },
-            }
-        ]
-    }
-    translator = StubTranslator()
-    agent = SoundAgent(whisper_url="http://whisper.test", translator=translator, timeout=5)
+    result = await transcribe_audio(audio, target_locale="en")
 
-    def fake_post(url, *, data=None, files=None, timeout=None):
-        assert url == "http://whisper.test/v1/audio/transcriptions"
-        assert data["model"] == agent.whisper_model
-        assert data["language"] == "es"
-        assert files["audio"][1] == audio_bytes
-        assert timeout == 5
-        return DummyResponse({"text": "hola mundo", "language": "es"})
-
-    monkeypatch.setattr(httpx, "post", fake_post)
-
-    result = agent.process(message, target_locale="en")
-
-    assert translator.calls == [("hola mundo", "en")]
-    assert result["content"] == "hola mundo::en"
-    assert result["language"] == "en"
-    assert result["metadata"]["segments"][0]["text"] == "hola mundo"
-    assert result["metadata"]["segments"][0]["source_label"] == "input-audio"
+    assert "Translated (en): bonjour::en" in result
 
 
-def test_sound_agent_raises_for_invalid_audio_blob():
-    message = {
-        "submessages": [
-            {
-                "format": "audio",
-                "content": {
-                    "encoding": "base64",
-                    "data": "###not-base64###",
-                },
-            }
-        ]
-    }
-    agent = SoundAgent(whisper_url="http://whisper.test")
-    with pytest.raises(AudioDecodingError):
-        agent.process(message)
+@pytest.mark.asyncio
+async def test_transcribe_audio_invalid_base64():
+    result = await transcribe_audio("not-base64:::")
+    assert "could not be decoded" in result.lower()
 
 
-def test_sound_agent_raises_on_missing_audio():
-    agent = SoundAgent(whisper_url="http://whisper.test")
-    message = {"submessages": []}
-    with pytest.raises(MissingAudioError):
-        agent.process(message)
+@pytest.mark.asyncio
+async def test_transcribe_audio_handles_http_error(monkeypatch):
+    audio = base64.b64encode(b"audio").decode()
+    response = DummyResponse(status_ok=False)
+    dummy_client = DummyClient(response)
 
+    monkeypatch.setattr(
+        "backend.app.agents.sound.httpx.AsyncClient", lambda timeout: dummy_client
+    )
 
-def test_sound_agent_raises_on_whisper_http_failure(monkeypatch):
-    audio_bytes = base64.b64encode(b"audio").decode("ascii")
-    message = {
-        "submessages": [
-            {
-                "format": "audio",
-                "content": {"encoding": "base64", "data": audio_bytes},
-            }
-        ]
-    }
-    agent = SoundAgent(whisper_url="http://whisper.test")
-
-    def fake_post(*args, **kwargs):
-        raise httpx.HTTPError("boom")
-
-    monkeypatch.setattr(httpx, "post", fake_post)
-    with pytest.raises(TranscriptionServiceError):
-        agent.process(message)
-
-
-def test_sound_agent_handles_nested_audio_and_multiple_samples(monkeypatch):
-    audio_bytes = base64.b64encode(b"audio-one").decode("ascii")
-    raw_audio = b"audio-two"
-    message = {
-        "submessages": [
-            {
-                "format": "audio",
-                "label": "top-audio",
-                "content": {
-                    "encoding": "base64",
-                    "data": audio_bytes,
-                    "language": "es",
-                },
-            },
-            {
-                "format": "container",
-                "submessages": [
-                    {
-                        "format": "audio",
-                        "label": "nested-audio",
-                        "content": raw_audio,
-                    }
-                ],
-            },
-        ]
-    }
-    translator = StubTranslator()
-    agent = SoundAgent(whisper_url="http://whisper.test", translator=translator)
-
-    responses = [
-        {"text": "hola mundo", "language": "es"},
-        {"text": "bonjour monde", "language": "fr"},
-    ]
-
-    call_count = {"value": 0}
-
-    def fake_post(url, *, data=None, files=None, timeout=None):
-        assert url == "http://whisper.test/v1/audio/transcriptions"
-        index = call_count["value"]
-        call_count["value"] += 1
-        return DummyResponse(responses[index])
-
-    monkeypatch.setattr(httpx, "post", fake_post)
-
-    result = agent.process(message, target_locale="en")
-
-    assert translator.calls == [("hola mundo bonjour monde", "en")]
-    assert result["content"] == "hola mundo bonjour monde::en"
-    assert result["language"] == "en"
-    assert len(result["metadata"]["segments"]) == 2
-    assert result["metadata"]["segments"][1]["source_label"] == "nested-audio"
-
-
-def test_sound_agent_translation_failure_raises_sound_agent_error(monkeypatch):
-    class FailingTranslator:
-        def translate(self, *args, **kwargs):
-            raise TranslationError("nope")
-
-    audio_bytes = base64.b64encode(b"audio").decode("ascii")
-    message = {
-        "submessages": [
-            {
-                "format": "audio",
-                "content": {
-                    "encoding": "base64",
-                    "data": audio_bytes,
-                },
-            }
-        ]
-    }
-
-    agent = SoundAgent(whisper_url="http://whisper.test", translator=FailingTranslator())
-
-    def fake_post(*args, **kwargs):
-        return DummyResponse({"text": "hola", "language": "es"})
-
-    monkeypatch.setattr(httpx, "post", fake_post)
-
-    with pytest.raises(SoundAgentError) as excinfo:
-        agent.process(message, target_locale="en")
-    assert "Translation failed" in str(excinfo.value)
-
-
-def test_sound_agent_handles_none_payload_with_missing_audio():
-    agent = SoundAgent(whisper_url="http://whisper.test")
-    with pytest.raises(MissingAudioError):
-        agent.process(None)
-
-
-def test_sound_agent_handle_uses_agent_interface(monkeypatch):
-    audio_bytes = base64.b64encode(b"audio").decode("ascii")
-
-    message = {
-        "format": "bundle",
-        "subformat": "task.audio.transcribe.en",
-        "submessages": [
-            {
-                "format": "audio",
-                "label": "sample",
-                "content": {
-                    "encoding": "base64",
-                    "data": audio_bytes,
-                    "language": "es",
-                },
-            }
-        ],
-    }
-
-    translator = StubTranslator()
-    agent = SoundAgent(whisper_url="http://whisper.test", translator=translator)
-
-    def fake_post(*args, **kwargs):
-        return DummyResponse({"text": "hola mundo", "language": "es"})
-
-    monkeypatch.setattr(httpx, "post", fake_post)
-
-    async def _run_handle():
-        return await agent.handle(message)
-
-    result = asyncio.run(_run_handle())
-
-    assert result["language"] == "en"
-    assert translator.calls == [("hola mundo", "en")]
+    result = await transcribe_audio(audio)
+    assert "unable to transcribe" in result.lower()

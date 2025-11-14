@@ -180,10 +180,10 @@ OpenAI's `POST /v1/audio/transcriptions` endpoint.
      (If you prefer managing dependencies manually, run `pip install -U openai-whisper`
      as described in the official Whisper README.)
 
-2. **Start the local Whisper server**
+2. **Start the local Whisper server** (run from the `backend/` directory)
 
    ```bash
-   bash start-whisper.sh --model large-v3 --port 9002
+   ./start-whisper.sh --model large-v3 --port 9002
    ```
 
    Flags:
@@ -224,7 +224,13 @@ sound agent simply issues HTTP requests against `WHISPER_URL`.
 
    Set `OLLAMA_URL` if your server listens somewhere other than `http://localhost:11434`.
 
-3. **Launch the Whisper sidecar** (see the commands in the Audio/Sound Agent section above). Leave this container running on `http://localhost:9002`.
+3. **Launch the Whisper sidecar** (see the commands in the Audio/Sound Agent section above). From the `backend/` directory run:
+
+   ```bash
+   ./start-whisper.sh
+   ```
+
+   Leave this process running on `http://localhost:9002`.
 
 4. **Run the FastAPI app**
 
