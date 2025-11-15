@@ -2,40 +2,33 @@ import os
 import asyncio
 import logging
 from typing import Optional, Any
-import httpx
+
+from googletrans import Translator
 
 from .nlip_agent import NlipAgent
 
 logger = logging.getLogger("NLIP")
 
-TRANSLATION_API="https://libretranslate.com/translate"
-
 #MODEL="openai/o4-mini"
 #MODEL="ollama_chat/llama3.2:3b"
 MODEL = "cerebras/llama3.3-70b"
 
-async def make_lt_request(text: str, target_lang: str, source_lang: str = "auto") -> str | None:
-    url = TRANSLATION_API
-    payload = {
-        "q": text,
-        "source": source_lang,
-        "target": target_lang,
-        "format": "text"
-    }
+translator = Translator()
 
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(url, json=payload)
-            response.raise_for_status()
-            data = response.json()
-            return data.get("translatedText", "")
-        except Exception:
-            return None
 
-#TOOL DEFINITION
+# TOOL DEFINITION
 async def get_translation(text: str, target_locale: str) -> str | None:
-    translation = await make_lt_request(text, target_locale)
-    return translation
+    """
+    Translate `text` into `target_locale` using googletrans.
+    Runs the blocking googletrans call in a worker thread.
+    """
+    async with Translator() as translator:
+        try:
+            result = await translator.translate(text, dest=target_locale)
+            return result.text
+        except Exception as e:
+            logger.error(f"Translation error: {e}")
+            return None
 
 class TranslationNlipAgent(NlipAgent):
     """NLIP Translation Agent exposing a single translation tool."""
