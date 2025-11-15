@@ -69,11 +69,16 @@ async def transcribe_audio(
         try:
             response = await client.post(url, data=data, files=files)
             response.raise_for_status()
-        except httpx.HTTPError as exc:  # pragma: no cover - network edge cases
+        except httpx.HTTPError as exc:  
             logger.exception("Whisper request failed: %s", exc)
             return "Unable to transcribe the audio because the Whisper request failed."
 
-    payload = response.json()
+    try:
+        payload = response.json()
+    except ValueError:
+        logger.exception("Whisper response was not valid JSON")
+        return "Unable to transcribe the audio because the Whisper response was invalid."
+
     transcript = (payload.get("text") or payload.get("transcription") or "").strip()
     if not transcript:
         return "Transcription service returned no text."

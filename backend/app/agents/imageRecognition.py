@@ -55,11 +55,16 @@ async def describe_image(image_base64: str, prompt: Optional[str] = None) -> str
         try:
             response = await client.post(url, json=payload)
             response.raise_for_status()
-        except httpx.HTTPError as exc:  # pragma: no cover - network edge cases
+        except httpx.HTTPError as exc: 
             logger.exception("Llava request failed: %s", exc)
             return "Unable to analyze the image because the Llava request failed."
 
-    data = response.json()
+    try:
+        data = response.json()
+    except ValueError:
+        logger.exception("Llava response was not valid JSON")
+        return "Unable to analyze the image because the Llava response was invalid."
+
     content = data.get("response") if isinstance(data, dict) else None
     if not isinstance(content, str):
         return "The Llava endpoint returned an unexpected payload."
