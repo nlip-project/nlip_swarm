@@ -5,6 +5,7 @@ from pydantic import TypeAdapter
 import time
 from typing import Any, Dict, List, Optional, cast
 from typing import Callable
+from app._logging import logger
 
 def schema_of(thing):
     adapter = TypeAdapter(thing)
@@ -93,7 +94,9 @@ class Agent:
         fn = self.fnmap[name]
         if fn:
             isFound = True
+            logger.info(f"Invoking tool: {name} with args: {args}")
             result = await fn(**args)
+            logger.info(f"Got tool result: {result}")
             self.final_text.append(f"Calling tool:{name} with args:{args}")
 
             content = result
@@ -131,13 +134,13 @@ class Agent:
         response = cast(Any, completion(
             model=self.model, messages=self.messages, tools=self.tools
         ))
-
+        logger.debug(f"LLM Response: {response}")
         response_message = cast(Any, response).choices[0].message
+        logger.debug(f"LLM Response Message: {response_message}")
 
         if response_message is None:
-            import sys
             print(f"RESPONSE:{response_message}")
-            sys.exit(1)
+            raise RuntimeError("No response from LLM")
 
         self._handle_response(response_message)
         tool_calls = list(response_message.tool_calls or [])

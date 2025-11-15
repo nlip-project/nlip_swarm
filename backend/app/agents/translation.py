@@ -1,9 +1,12 @@
 import os
 import asyncio
+import logging
 from typing import Optional, Any
 import httpx
 
 from .nlip_agent import NlipAgent
+
+logger = logging.getLogger("NLIP")
 
 TRANSLATION_API="https://libretranslate.com/translate"
 
