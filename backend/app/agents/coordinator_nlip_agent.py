@@ -17,7 +17,7 @@ CAP1:desc, CAP2:desc, ...
 
 import asyncio
 import logging
-from typing import Optional, Any
+from typing import Optional, Any, Dict
 from urllib.parse import urlparse
 import httpx
 import json
@@ -66,16 +66,42 @@ async def send_to_server(url: AnyHttpUrl, message: str) -> dict:
 
     return nlip_response.extract_text()
 
+
+async def get_all_capabilities() -> Dict[str, Any]:
+    """
+    Query all currently connected NLIP servers with
+    \"What are your NLIP Capabilities?\" and return a mapping from
+    server URL to their reported capabilities text.
+    """
+    results: Dict[str, Any] = {}
+
+    for hashkey, client in sessions.items():
+        try:
+            nlip_message = NLIP_Factory.create_text("What are your NLIP Capabilities?")
+            logger.info(f"Querying capabilities from {hashkey}")
+            nlip_response = await client.async_send(nlip_message)
+            logger.info(f"Capabilities response from {hashkey}: {nlip_response.model_dump()}")
+            results[hashkey] = nlip_response.extract_text()
+        except Exception as exc:
+            logger.error(f"Failed to get capabilities from {hashkey}: {exc}")
+            results[hashkey] = f"Error: {exc}"
+
+    return results
+
+
 NLIP_COORDINATOR_PROMPT = """
 You are an advanced NLIP Agent with the capability to speak to other NLIP Agents.
-You have two tools for this purpose:
+You have three tools for this purpose:
 - connect_to_server
 - send_to_server
+ - get_all_capabilities
 
 When you are asked to connect to a server at a specific URL, use the connect_to_server tool with that URL to establish a connection.
 If the response to that tool begins with: "Connected to ", then the connection is valid.  Otherwise, it is not.
 For a valid connection, you should follow the connect_to_server tool call with a tool call of send_to_server to the same URL with the string: "What are your NLIP Capabilities?"
 The remote Agent will respond with its [NAME] and capabilities.  Take note of this information, especially the NAME.  In future requests, if a user asks for you to send a request to NAME you should use the send_to_server tool with the URL that was associated with NAME and use the request as the msg: argument.
+
+If the user asks you: "What are your NLIP Capabilities?" you MUST call the get_all_capabilities tool first to gather capabilities for all connected servers, then summarize those capabilities in your final natural-language response. Separate the capabilities of each server clearly by server URL.
 """
 
 class CoordinatorNlipAgent(NlipAgent):
@@ -83,7 +109,7 @@ class CoordinatorNlipAgent(NlipAgent):
         name: str,
         model: str = MODEL,
         instruction: Optional[str] = None,
-        tools = [connect_to_server, send_to_server],
+        tools = [connect_to_server, send_to_server, get_all_capabilities],
     ):
         super().__init__(name=name, model=model, tools=tools)
 
