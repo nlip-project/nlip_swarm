@@ -15,25 +15,6 @@ OLLAMA_IMAGE_MODEL = os.getenv("OLLAMA_IMAGE_MODEL", "llava")
 
 
 # TOOL DEFINITION
-async def encode_image_to_base64(image_path: str) -> Optional[str]:
-    """
-    Read an image from `image_path` and return its contents as a base64 string.
-
-    This is useful for preparing images to send to NLIP or Ollama endpoints
-    that expect raw base64 (no data URI prefix).
-    """
-    try:
-        def _read_bytes(path: str) -> bytes:
-            with open(path, "rb") as f:
-                return f.read()
-
-        data = await asyncio.to_thread(_read_bytes, image_path)
-        return base64.b64encode(data).decode("utf-8")
-    except Exception as exc:
-        logger.error(f"Failed to encode image at {image_path!r} to base64: {exc}")
-        return None
-
-
 async def recognize_image(encodedImage: str, prompt: Optional[str] = None) -> Optional[str]:
     """
     Recognize and describe a base64-encoded image using the configured Ollama
