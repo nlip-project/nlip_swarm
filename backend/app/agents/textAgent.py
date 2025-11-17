@@ -1,9 +1,20 @@
+import asyncio
+import logging
+from .nlip_agent import NlipAgent
+
+
 import os
 from typing import Optional
 import httpx
 
-from nlip_sdk import nlip
+from nlip_sdk.nlip import AllowedFormats, NLIP_Message, NLIP_Factory
 from .base import Agent
+
+#TOOL Definition
+
+def 
+
+
 
 class LLamaTextAgent(Agent):
     """
@@ -26,57 +37,38 @@ class LLamaTextAgent(Agent):
    
     
 
-    def handle(self, message: nlip.NLIP_Message) -> nlip.NLIP_Message:
+    async def handle(self, message: NLIP_Message) -> NLIP_Message:
         text = ""
-        if message.format == "text" and message.content is not None:
-            text = message.content
-        else:
-            raise ValueError("Unsupported message format or empty content.")
-
-        # Process the text using the LLama model
+        content = message.content if isinstance(message.content, str) else ""
+        if content:
+            if message.format == AllowedFormats.text:
+                text = content
+            elif message.format == AllowedFormats.generic and (getattr(message, "subformat", "") or "").startswith("task.text"):
+                text = content
+        if not text:
+            raise ValueError(f"Unsupported message format or empty content. format={message.format}, subformat={getattr(message, 'subformat', None)}")
         try:
-            modelResponse = self.promptResponse(text)
+            response_text = self.promptResponse(text)
         except Exception as e:
-            return nlip.NLIP_Factory.create_text(
-                messagetype="error",
-                content=f"Error processing request: {str(e)}",
-                language="en",
-                label="llama_response"
-            )
-        
-        return nlip.NLIP_Factory.create_text(
-            content=modelResponse.get("response", ""),
-            language="en",
-            label="llama_response"
-        )
+            err = NLIP_Factory.create_text(f"Error processing request: {str(e)}", label="llama_response")
+            err.messagetype = "error"
+            return err
+        return NLIP_Factory.create_text(response_text or "", label="llama_response")
     
-    def promptResponse(self, prompt: str) -> nlip.NLIP_Message:
-        # Generate a response based on the prompt and context
-        # context = {}  # Define context as needed
+    def promptResponse(self, prompt: str) -> str:
         url = f"{self.base_url}/api/generate"
         payload = {
             "model": self.model,
             "prompt": prompt or "Describe the content of this image in detail.",
-            "stream": False, # No streaming for simplicity right now, don't have to deal with async generator
+            "stream": False,
         }
-
-        try:
-            response = httpx.post(url, json=payload, timeout=60)
-            response.raise_for_status()
-
-        except httpx.RequestError as exc:
-            print(f"Error while requesting {exc.request.url!r}.")
-            return ""
-        except httpx.HTTPStatusError as exc:
-            print(f"Error response {exc.response.status_code} while requesting {exc.request.url!r}.")
-            return ""
-        
-        try:
-            data = response.json()
-            return data
-        except ValueError:
-            print("Failed to parse JSON response")
-            return ""
+        response = httpx.post(url, json=payload, timeout=60)
+        response.raise_for_status()
+        data = response.json()
+        out = data.get("response") if isinstance(data, dict) else None
+        if not isinstance(out, str):
+            raise ValueError("Invalid response from model")
+        return out
 
 # # Example usage:
 # print(LLamaTextAgent().promptResponse("What is the capital of France?"))

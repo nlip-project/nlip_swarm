@@ -1,0 +1,1 @@
+MEM_APP_TBL = {}
