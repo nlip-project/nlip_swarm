@@ -13,7 +13,6 @@ import {
     Image,
     Keyboard,
     KeyboardAvoidingView,
-    Linking,
     Platform,
     StyleSheet,
     TextInput,
@@ -24,6 +23,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NLIPClient from '../nlipClient';
+import MessageRow from '../../components/MessageRow';
+import { formatFileSize } from '../../components/utils';
 
 export default function TabThreeScreen() {
     const theme = useColorScheme() ?? "light";
@@ -37,7 +38,7 @@ export default function TabThreeScreen() {
     const [fileName, setFileName] = useState<string | null>(null);
     const [fileSize, setFileSize] = useState<number | null>(null);
     const [fileType, setFileType] = useState<string | null>(null);
-    const [oldConversations, setOldConversations] = useState<Message[][]>([]);
+    const [, setOldConversations] = useState<Message[][]>([]);
     type Message = {
         id: string;
         text?: string;
@@ -61,15 +62,6 @@ export default function TabThreeScreen() {
     const API_BASE = "http://0.0.0.0:8024";
     const client = new NLIPClient(API_BASE, { timeout: 30000 });
 
-    // Helper function to format file size
-    function formatFileSize(bytes: number): string {
-        if (bytes < 1024) return `${bytes} B`;
-        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-        if (bytes < 1024 * 1024 * 1024)
-            return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-        return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-    }
-
     // Clear chat function
     function clearChat() {
         if (messages.length > 0) {
@@ -78,16 +70,9 @@ export default function TabThreeScreen() {
         }
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    function onRestoreConversation(idx: number) {
-        setMessages(oldConversations[idx]);
-        // Do not remove the conversation from oldConversations
-    }
-
     // Auto-scroll to bottom when keyboard opens so the input stays visible
     useEffect(() => {
-        const eventName =
-            Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+        const eventName = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
         const sub = Keyboard.addListener(eventName, () => {
             requestAnimationFrame(() =>
                 listRef.current?.scrollToOffset({ offset: 0, animated: true })
@@ -340,114 +325,7 @@ export default function TabThreeScreen() {
                         {...(!isWeb ? { maintainVisibleContentPosition: { minIndexForVisible: 0 } } : {})}
                         contentContainerStyle={[{ flexGrow: 1 }, messages.length === 0 ? styles.emptyListContainer : undefined]}
                         renderItem={({ item }) => (
-                            <View
-                                style={[
-                                    styles.messageRow,
-                                    item.sender === "me" ? styles.rowMe : styles.rowOther,
-                                ]}
-                            >
-                                {item.sender === 'other' ? (
-                                    <View style={[styles.avatar, { borderColor: c.icon, backgroundColor: c.background }]}>
-                                        <Ionicons name="person" size={18} color={c.icon} />
-                                    </View>
-                                ) : null}
-                                <View
-                                    style={[
-                                        styles.bubble,
-                                        {
-                                            backgroundColor:
-                                                item.sender === "me" ? c.messageMeBg : c.messageOtherBg,
-                                            borderColor: c.icon,
-                                            borderWidth: 1,
-                                        },
-                                    ]}
-                                >
-                                    {item.text ? (
-                                        <ThemedText
-                                            style={[
-                                                styles.bubbleText,
-                                                {
-                                                    color:
-                                                        item.sender === "me"
-                                                            ? c.messageMeText
-                                                            : c.messageOtherText,
-                                                },
-                                            ]}
-                                        >
-                                            {item.text}
-                                        </ThemedText>
-                                    ) : null}
-                                    {item.imageUri ? (
-                                        <Image
-                                            source={{ uri: item.imageUri }}
-                                            style={styles.bubbleImage}
-                                        />
-                                    ) : null}
-                                    {item.fileUri ? (
-                                        <TouchableOpacity
-                                            style={styles.fileAttachment}
-                                            onPress={() => {
-                                                if (item.fileUri) {
-                                                    void Linking.openURL(item.fileUri).catch((err) => {
-                                                        console.error("Failed to open file:", err);
-                                                        Alert.alert("Error", "Could not open file");
-                                                    });
-                                                }
-                                            }}
-                                        >
-                                            <Ionicons
-                                                name="document"
-                                                size={24}
-                                                color={
-                                                    item.sender === "me"
-                                                        ? c.messageMeText
-                                                        : c.messageOtherText
-                                                }
-                                            />
-                                            <View style={styles.fileInfo}>
-                                                <ThemedText
-                                                    style={[
-                                                        styles.fileName,
-                                                        {
-                                                            color:
-                                                                item.sender === "me"
-                                                                    ? c.messageMeText
-                                                                    : c.messageOtherText,
-                                                        },
-                                                    ]}
-                                                >
-                                                    {item.fileName || "Unknown file"}
-                                                </ThemedText>
-                                                {item.fileSize !== null &&
-                                                    item.fileSize !== undefined ? (
-                                                    <ThemedText
-                                                        style={[
-                                                            styles.fileSize,
-                                                            {
-                                                                color:
-                                                                    item.sender === "me"
-                                                                        ? c.messageMeText
-                                                                        : c.messageOtherText,
-                                                            },
-                                                        ]}
-                                                    >
-                                                        {formatFileSize(item.fileSize)}
-                                                    </ThemedText>
-                                                ) : null}
-                                            </View>
-                                        </TouchableOpacity>
-                                    ) : null}
-                                </View>
-                                <View
-                                    style={[
-                                        styles.avatar,
-                                        { borderColor: c.icon, backgroundColor: c.background },
-                                    ]}
-                                >
-                                    {/* TODO: replace with actual profile avatar if available */}
-                                    <Ionicons name="person" size={18} color={c.icon} />
-                                </View>
-                            </View>
+                            <MessageRow item={item} c={c} />
                         )}
                     />
                     {imageUri ? (
