@@ -3,3 +3,5 @@
 #testing
 .venv/
 .pytest_cache/
+
+.env
