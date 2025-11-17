@@ -58,12 +58,7 @@ export default function TabThreeScreen() {
         left: screen.width * 0.04,
     };
 
-    // Platform-aware base URL. For web we can use the current origin. For Android emulator use 10.0.2.2 to reach host machine.
-    // For a physical device set this to your machine IP (e.g. 'http://192.168.1.10:8000').
-    const API_BASE = Platform.OS === 'web'
-        ? (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8000')
-        : (Platform.OS === 'android' ? 'http://10.0.2.2:8000' : 'http://localhost:8000');
-    // client instance - NLIPClient handles payload construction and response parsing
+    const API_BASE = "http://0.0.0.0:8024";
     const client = new NLIPClient(API_BASE, { timeout: 30000 });
 
     // Helper function to format file size
@@ -188,22 +183,40 @@ export default function TabThreeScreen() {
         }
     }
 
-    async function sendToBackend(inputText: string, options?: { imageUri?: string | null; fileUri?: string | null; fileName?: string | null; fileType?: string | null; }): Promise<string> {
+    async function sendToBackend(inputText: string, options?: { imageUri?: string | null; fileUri?: string | null; fileName?: string | null; fileType?: string | null; }): Promise<any> {
         console.log('[sendToBackend] Delegating to NLIPClient with text:', inputText, 'options:', options);
         try {
             if (options?.imageUri) {
-                const reply = await client.sendWithImage(inputText, options.imageUri, options.fileName ?? undefined, options.fileType ?? undefined);
+                const reply = await client.sendMessage({
+                    format: 'text',
+                    subformat: 'english',
+                    content: inputText,
+                    submessages: [
+                        {
+                            format: 'image',
+                            content: await client.uriToBase64(options.imageUri),
+                            label: options.fileName ?? 'image.jpg',
+                        },
+                    ],
+                });
                 console.log('[sendToBackend] NLIPClient replied (image):', reply);
                 return reply;
             }
-            if (options?.fileUri) {
-                const reply = await client.sendWithFile(inputText, options.fileUri, options.fileName ?? undefined, options.fileType ?? undefined);
-                console.log('[sendToBackend] NLIPClient replied (file):', reply);
+            // if (options?.fileUri) {
+            //     const reply = await client.sendWithFile(inputText, options.fileUri, options.fileName ?? undefined, options.fileType ?? undefined);
+            //     console.log('[sendToBackend] NLIPClient replied (file):', reply);
+            //     return reply;
+            // }
+            else {
+                const reply = await client.sendMessage({
+                    format: 'text',
+                    subformat: 'english',
+                    content: inputText,
+                    submessages: [],
+                });
+                console.log('[sendToBackend] NLIPClient replied:', reply);
                 return reply;
             }
-            const reply = await client.sendMessage(inputText);
-            console.log('[sendToBackend] NLIPClient replied:', reply);
-            return reply;
         } catch (err: any) {
             console.error('[sendToBackend] NLIPClient error:', err);
             throw err;
@@ -257,9 +270,34 @@ export default function TabThreeScreen() {
         void sendToBackend(trimmed, { imageUri: localImage, fileUri: localFile, fileName: localFileName, fileType: localFileType })
             .then((reply) => {
                 console.log('[handleSend] Received reply:', reply);
+                // Ensure we don't pass an object into Text children (React Native error).
+                let replyText: string;
+                if (reply == null) {
+                    replyText = '';
+                } else if (typeof reply === 'string') {
+                    replyText = reply;
+                } else if (typeof reply === 'object') {
+                    // Prefer `content` property if present, otherwise stringify safely.
+                    // Some backends return an object like { content: '...', format: 'text', ... }
+                    // Use the content field when available to preserve readable text.
+                    // Fallback to JSON string so UI doesn't crash when rendering.
+                    const r = reply as any;
+                    if (r && typeof r.content === 'string') {
+                        replyText = r.content;
+                    } else {
+                        try {
+                            replyText = JSON.stringify(reply);
+                        } catch {
+                            replyText = String(reply);
+                        }
+                    }
+                } else {
+                    replyText = String(reply);
+                }
+
                 const replyMessage: Message = {
                     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                    text: reply,
+                    text: replyText,
                     timestamp: Date.now(),
                     sender: 'other',
                 };
