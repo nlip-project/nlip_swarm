@@ -7,9 +7,9 @@ from .nlip_agent import NlipAgent
 
 TRANSLATION_API="https://libretranslate.com/translate"
 
-#MODEL="openai/o4-mini"
+MODEL="openai/o4-mini"
 #MODEL="ollama_chat/llama3.2:3b"
-MODEL = "cerebras/llama3.3-70b"
+#MODEL = "cerebras/llama3.3-70b"
 
 async def make_lt_request(text: str, target_lang: str, source_lang: str = "auto") -> str | None:
     url = TRANSLATION_API

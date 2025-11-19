@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-"""NLIP server wrapper for the TextNlipAgent."""
+"""NLIP server wrapper for the ImageNlipAgent."""
 
 from nlip_sdk.nlip import NLIP_Factory, NLIP_Message
 
-from app.agents.textAgent import TextNlipAgent
+from app.agents.imageRecognition import ImageNlipAgent
 from app.http_server.nlip_session_server import NlipSessionServer, SessionManager
 
 
@@ -14,9 +14,11 @@ CAP_QUERY_PHRASES = {
 }
 
 
-def _capabilities_text(agent: TextNlipAgent) -> str:
+def _capabilities_text(agent: ImageNlipAgent) -> str:
     capabilities = [
-        "TEXT_GENERATION:Summaries, drafts, and creative writing using the generate_text tool",
+        "IMAGE_DESCRIPTION:Describes images using the describe_image tool backed by a Llava-compatible endpoint.",
+        "PROMPT_GUIDANCE:Accepts optional prompts to steer the description.",
+        "DATA_URL_STRIPPING:Handles base64 payloads or data URLs for images.",
     ]
     return f"AGENT:{agent.name}\n" + ", ".join(capabilities)
 
@@ -26,14 +28,14 @@ def _clean_outputs(outputs: list[str]) -> list[str]:
     return cleaned or [""]
 
 
-class TextSessionManager(SessionManager):
+class ImageSessionManager(SessionManager):
     def __init__(self) -> None:
-        self.agent = TextNlipAgent("text")
+        self.agent = ImageNlipAgent("image")
 
     async def process_nlip(self, msg: NLIP_Message) -> NLIP_Message:
         text = msg.extract_text()
         if not text:
-            return NLIP_Factory.create_text("Text agent expects textual content.")
+            return NLIP_Factory.create_text("Image agent expects textual content.")
 
         normalized = text.strip().lower()
         if normalized in CAP_QUERY_PHRASES:
@@ -42,7 +44,7 @@ class TextSessionManager(SessionManager):
         try:
             raw_results = await self.agent.process_query(text)
         except Exception as exc:  # pragma: no cover - defensive logging
-            return NLIP_Factory.create_text(f"Error processing text request: {exc}")
+            return NLIP_Factory.create_text(f"Error processing image request: {exc}")
 
         results = _clean_outputs(raw_results)
         response = NLIP_Factory.create_text(results[0])
@@ -51,4 +53,4 @@ class TextSessionManager(SessionManager):
         return response
 
 
-app = NlipSessionServer("TextAgentCookie", TextSessionManager)
+app = NlipSessionServer("ImageAgentCookie", ImageSessionManager)
