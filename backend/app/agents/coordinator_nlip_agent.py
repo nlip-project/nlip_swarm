@@ -21,20 +21,19 @@ from typing import Optional, Any, Dict
 from urllib.parse import urlparse
 import httpx
 import json
-from pydantic import AnyHttpUrl
 
-from nlip_sdk.nlip import NLIP_Factory
+from nlip_sdk.nlip import NLIP_Factory, NLIP_Message
 from app.agents.nlip_agent import NlipAgent
 from app.http_client.nlip_async_client import NlipAsyncClient
 
 sessions = {}
 
 logger = logging.getLogger("NLIP")
-MODEL = "openai/gpt-4o-mini"
+#MODEL = "openai/gpt-4o-mini"
 #MODEL = "ollama_chat/llama3.2:3b"
-#MODEL = "cerebras/llama3.3-70b"
+MODEL = "cerebras/llama3.3-70b"
 
-async def connect_to_server(url: AnyHttpUrl):
+async def connect_to_server(url: str):
     try:
         parsed_url = urlparse(str(url))
         scheme = parsed_url.scheme
@@ -51,13 +50,17 @@ async def connect_to_server(url: AnyHttpUrl):
     logger.info(f"Saved {netloc} with client {client}")
     return f"Connected to {scheme}://{netloc}/"
 
-async def send_to_server(url: AnyHttpUrl, message: str) -> dict:
+async def send_to_server(url: str, message: str) -> dict:
     parsed_url = urlparse(str(url))
     scheme = parsed_url.scheme
     netloc = parsed_url.netloc
     
     hashkey = f"{scheme}://{netloc}"
-    client = sessions[hashkey]
+    client = sessions.get(hashkey)
+    if client is None:
+        # Lazy-connect if not already connected (handles mem:// as well).
+        client = NlipAsyncClient.create_from_url(f"{scheme}://{netloc}/nlip")
+        sessions[hashkey] = client
 
     nlip_message = NLIP_Factory.create_text(message)
     logger.info(f"Sending message: {message}")
@@ -89,12 +92,39 @@ async def get_all_capabilities() -> Dict[str, Any]:
     return results
 
 
+async def relay_nlip_to_server(url: str, message: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Forward a full NLIP_Message payload (including binary/media submessages) to a server.
+    """
+    parsed_url = urlparse(str(url))
+    scheme = parsed_url.scheme
+    netloc = parsed_url.netloc
+
+    hashkey = f"{scheme}://{netloc}"
+    client = sessions.get(hashkey)
+    if client is None:
+        client = NlipAsyncClient.create_from_url(f"{scheme}://{netloc}/nlip")
+        sessions[hashkey] = client
+
+    try:
+        nlip_message = NLIP_Message.model_validate(message)
+    except Exception as exc:
+        return {"error": f"Invalid NLIP message: {exc}"}
+
+    logger.info(f"Relaying NLIP to {hashkey}")
+    nlip_response = await client.async_send(nlip_message)
+    logger.info(f"Received relay response: {nlip_response.model_dump()}")
+
+    return nlip_response.model_dump()
+
+
 NLIP_COORDINATOR_PROMPT = """
 You are an advanced NLIP Agent with the capability to speak to other NLIP Agents.
-You have three tools for this purpose:
+You have four tools for this purpose:
 - connect_to_server
-- send_to_server
- - get_all_capabilities
+- send_to_server (for text-only requests)
+- relay_nlip_to_server (for full NLIP payloads, including media/binary submessages)
+- get_all_capabilities
 
 When you are asked to connect to a server at a specific URL, use the connect_to_server tool with that URL to establish a connection.
 If the response to that tool begins with: "Connected to ", then the connection is valid.  Otherwise, it is not.
@@ -102,6 +132,12 @@ For a valid connection, you should follow the connect_to_server tool call with a
 The remote Agent will respond with its [NAME] and capabilities.  Take note of this information, especially the NAME.  In future requests, if a user asks for you to send a request to NAME you should use the send_to_server tool with the URL that was associated with NAME and use the request as the msg: argument.
 
 If the user asks you: "What are your NLIP Capabilities?" you MUST call the get_all_capabilities tool first to gather capabilities for all connected servers, then summarize those capabilities in your final natural-language response. Separate the capabilities of each server clearly by server URL.
+
+When the incoming NLIP message includes media/structured content (e.g., binary/image/audio/video or other submessages), prefer relay_nlip_to_server so downstream agents receive the full payload. Use send_to_server only for simple text-only interactions.
+
+Tool calling rules:
+- Call at most ONE tool per turn. If multiple steps are needed (e.g., connect, then send), do them sequentially across turns.
+- Pass tool arguments as a JSON object with named keys, e.g., {"url": "...", "message": "..."}.
 """
 
 class CoordinatorNlipAgent(NlipAgent):
@@ -109,7 +145,7 @@ class CoordinatorNlipAgent(NlipAgent):
         name: str,
         model: str = MODEL,
         instruction: Optional[str] = None,
-        tools = [connect_to_server, send_to_server, get_all_capabilities],
+        tools = [connect_to_server, send_to_server, relay_nlip_to_server, get_all_capabilities],
     ):
         super().__init__(name=name, model=model, tools=tools)
 

@@ -12,26 +12,6 @@ CAP_QUERY_PHRASES = {
     "what are your nlip capabilities?",
 }
 
-
-def _capabilities_text(agent: TranslationNlipAgent) -> str:
-    capabilities = [
-        "TRANSLATE_TEXT:Translates text to a specified target locale using the get_translation tool.",
-        "DETECT_LANGUAGE:Auto-detects source language when not provided.",
-        "PRESERVE_STRUCTURE:Keeps punctuation and formatting intact where possible.",
-    ]
-    return f"AGENT:{agent.name}\n" + ", ".join(capabilities)
-
-
-def _clean_outputs(outputs: list[str]) -> list[str]:
-    cleaned = [entry for entry in outputs if entry and not entry.startswith("Calling tool:")]
-    return cleaned or [""]
-
-CAP_QUERY_PHRASES = {
-    "describe your nlip capabilities.",
-    "what are your nlip capabilities?",
-}
-
-
 def _capabilities_text(agent: TranslationNlipAgent) -> str:
     capabilities = [
         "TRANSLATE_TEXT:Translates text to a specified target locale using the get_translation tool.",

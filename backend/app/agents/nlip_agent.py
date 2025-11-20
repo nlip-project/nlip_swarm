@@ -3,6 +3,7 @@ import logging
 from typing import Callable, Optional
 from .base import Agent
 from .base import MODEL
+MODEL = "cerebras/llama3.3-70b"
 
 
 logger = logging.getLogger("NLIP")

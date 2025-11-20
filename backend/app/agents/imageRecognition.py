@@ -12,6 +12,7 @@ import httpx
 
 from .nlip_agent import NlipAgent
 from .base import MODEL
+MODEL = "cerebras/llama3.3-70b"
 
 
 logger = logging.getLogger("NLIP")
