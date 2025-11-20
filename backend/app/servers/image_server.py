@@ -6,6 +6,7 @@ from nlip_sdk.nlip import NLIP_Factory, NLIP_Message
 
 from app.agents.imageRecognition import ImageNlipAgent
 from app.http_server.nlip_session_server import NlipSessionServer, SessionManager
+from app.agents.imageRecognition import describe_image
 
 
 CAP_QUERY_PHRASES = {
@@ -32,8 +33,30 @@ class ImageSessionManager(SessionManager):
     def __init__(self) -> None:
         self.agent = ImageNlipAgent("image")
 
+    def process_image(self, text: str, image_payload: str) -> str:
+        prompt = text or "The user did not supply extra instructions."
+        request = ("You have received an NLIP request that includes an image.\n"
+            "Call the `describe_image` tool exactly once, using the prompt below "
+            "and the base64 payload exactly as provided between IMAGE_BASE64_BEGIN/END.\n"
+            "PROMPT:\n"
+            f"{prompt}\n"
+            "IMAGE_BASE64_BEGIN\n"
+            f"{image_payload}\n"
+            "IMAGE_BASE64_END\n"
+            "Do not fabricate or shorten the base64 string; copy it verbatim into the `image_base64` argument."
+        )
+        return request
+
     async def process_nlip(self, msg: NLIP_Message) -> NLIP_Message:
         text = msg.extract_text()
+        # fmt = msg.extract_field_list(format="binary", subformat="image/base64")
+        # if fmt:
+        #     # request = self.process_image(text, fmt[0])
+        #     respones = await describe_image(image_base64=fmt[0], prompt=text)
+        #     return NLIP_Factory.create_text(respones)
+        # else:
+        #     # print("No image format found in NLIP message submessages.")
+        #     request = text
         if not text:
             return NLIP_Factory.create_text("Image agent expects textual content.")
 

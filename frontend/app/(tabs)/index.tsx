@@ -176,9 +176,10 @@ export default function TabThreeScreen() {
                     format: 'text',
                     subformat: 'english',
                     content: inputText,
-                    submessages: [
+                    submessages: [ // not sure if js has NLIP_SDK, should use an NLIP_Message type anyway for this
                         {
-                            format: 'image',
+                            format: 'binary', // images are format binary with subformat image/{encoding}
+                            subformat: 'image/base64',
                             content: await client.uriToBase64(options.imageUri),
                             label: options.fileName ?? 'image.jpg',
                         },

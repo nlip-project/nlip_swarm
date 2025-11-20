@@ -1,6 +1,8 @@
 import asyncio
+import base64
 import logging
 import json
+from pathlib import Path
 from pydantic import TypeAdapter
 import time
 from typing import Any, Dict, List, Optional, cast
@@ -89,6 +91,11 @@ class Agent:
     
     async def _call_tool(self, name: str, args: Dict, tool_call_id: str) -> bool:
         isFound = False
+        # image_path = Path(__file__).with_name("test.jpg")
+        # encodedImage = base64.b64encode(open(image_path, "rb").read()).decode("utf-8")
+        # if "image_base64" in args: # see if i can force a valid tool call for testing
+        #     print(f"Injecting test image base64 into tool call args")
+        #     args["image_base64"] = encodedImage
 
         fn = self.fnmap[name]
         if fn:
@@ -122,7 +129,7 @@ class Agent:
         else:
             self.messages.append(response)
 
-    async def process_query(self, query: str) -> list[str]:
+    async def process_query(self, query: str | list) -> list[str]:
         print(f"Processing query")
 
         self.final_text = []

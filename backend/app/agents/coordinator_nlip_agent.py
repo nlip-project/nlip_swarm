@@ -30,9 +30,9 @@ from app.http_client.nlip_async_client import NlipAsyncClient
 sessions = {}
 
 logger = logging.getLogger("NLIP")
-MODEL = "openai/gpt-4o-mini"
+#MODEL = "openai/gpt-4o-mini"
 #MODEL = "ollama_chat/llama3.2:3b"
-#MODEL = "cerebras/llama3.3-70b"
+MODEL = "cerebras/llama3.3-70b"
 
 async def connect_to_server(url: AnyHttpUrl):
     try:
@@ -89,6 +89,11 @@ class CoordinatorNlipAgent(NlipAgent):
 
         self.add_instruction("You are an agent with tools for querying other NLIP Agent Servers.")
         self.add_instruction(NLIP_COORDINATOR_PROMPT)
+        # self.add_instruction(
+        #     "If the user message contains IMAGE_BASE64_BEGIN/END markers, you must call "
+        #     "`describe_image(image_base64=<exact payload>, prompt=<provided prompt>)`. "
+        #     "Never invent placeholders like 'image_url'; pass the raw base64 string."
+        # )
 
         if instruction:
             self.add_instruction(instruction)

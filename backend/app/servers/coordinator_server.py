@@ -1,3 +1,4 @@
+import json
 import os
 import argparse
 import logging
@@ -5,10 +6,17 @@ import logging
 from nlip_sdk.nlip import NLIP_Factory, NLIP_Message
 from ..agents.coordinator_nlip_agent import CoordinatorNlipAgent
 from ..agents.sound import transcribe_audio
+from ..agents.imageRecognition import describe_image
 from ..http_server.nlip_session_server import SessionManager, NlipSessionServer
 import uvicorn
 
 logger = logging.getLogger("NLIP")
+
+
+# Changes made
+# Added fast-path for image description via describe_image tool call
+# Ideally, the coordinator (or image agent after coordinator is told to send request to image agent?) would call describe_image tool directly.
+# But for now, adding fast-path here since model cannot accept large base64 image in context for message request.
 
 class NlipManager(SessionManager):
     def __init__(self, **kwargs):
@@ -17,7 +25,7 @@ class NlipManager(SessionManager):
         self.myAgent = CoordinatorNlipAgent(
             "Coordinator"
         )
-
+   
     async def process_nlip(self, msg: NLIP_Message) -> NLIP_Message:
         # Fast-path: if the inbound payload is audio, bypass the LLM tool-calling
         # path to avoid stuffing large base64 into the coordinator context.
@@ -38,6 +46,20 @@ class NlipManager(SessionManager):
 
         text = msg.extract_text()
 
+        # Image handling
+        fmt = msg.extract_field_list(format="binary", subformat="image/base64")
+        if fmt:
+            # request = self.process_image(text, fmt[0])
+            try:
+                response = await describe_image(image_base64=fmt[0], prompt=text)
+                return NLIP_Factory.create_text(response)
+            except Exception as exc:
+                logger.exception("Image fast-path failed: %s", exc)
+                return NLIP_Factory.create_text(f"Unable to describe image: {exc}")
+        # else:
+        #     request = text
+
+        # normal processing via coordinator agent
         try:
             results = await self.myAgent.process_query(text)
             msg = NLIP_Factory.create_text(results[0])

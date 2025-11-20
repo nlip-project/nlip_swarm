@@ -1,4 +1,12 @@
 # backend/tests/test_image_flow.py
+import os
+import pathlib
+import sys
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from backend.app.deprecated.supervisor import process_nlip  # for monkeypatching
 from nlip_sdk import nlip
 def mock_recognize_image(self, encodedImage: str, prompt: str) -> str:

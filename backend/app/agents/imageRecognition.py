@@ -10,7 +10,7 @@ from typing import Optional
 import httpx
 
 from .nlip_agent import NlipAgent
-from .base import MODEL
+# from .base import MODEL
 
 
 logger = logging.getLogger("NLIP")
@@ -18,7 +18,11 @@ logger = logging.getLogger("NLIP")
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
 OLLAMA_IMAGE_MODEL = os.getenv("OLLAMA_IMAGE_MODEL", "llava")
-OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "60.0"))
+OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "120.0"))
+# MODEL = "ollama/llava" # maybe change to text model (for better tool call) ? Since image model is only called via tool.
+MODEL = "cerebras/llama3.3-70b" # Coordinator will call image model via tool call.
+# going to make manual bypass to call image recognition tool directly from coordinator for fast path.
+# trying to go through coordinator to call image model seems to have issues with context length and tool calls. (base64 image too long)
 
 
 def _strip_data_url(image_base64: str) -> str:
@@ -83,5 +87,10 @@ class ImageNlipAgent(NlipAgent):
         super().__init__(name=name, model=model, instruction=instruction, tools=[describe_image])
 
         self.add_instruction(
-            "You can help users understand images by calling the `describe_image` tool."
+            (
+                "You can help users understand images by calling the `describe_image` tool. "
+            )
         )
+                #         "If the user message contains IMAGE_BASE64_BEGIN/END markers, you must call "
+                # "`describe_image(image_base64=<exact payload>, prompt=<provided prompt>)`. "
+                # "Never invent placeholders like 'image_url'; pass the raw base64 string."
