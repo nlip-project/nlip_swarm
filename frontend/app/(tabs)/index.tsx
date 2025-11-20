@@ -59,7 +59,7 @@ export default function TabThreeScreen() {
         left: screen.width * 0.04,
     };
 
-    const API_BASE = "http://0.0.0.0:8024";
+    const API_BASE = "http://10.0.2.2:8024";
     const client = new NLIPClient(API_BASE, { timeout: 30000 });
 
     // Clear chat function
@@ -178,7 +178,8 @@ export default function TabThreeScreen() {
                     content: inputText,
                     submessages: [
                         {
-                            format: 'image',
+                            format: 'binary',
+                            subformat: 'image/base64',
                             content: await client.uriToBase64(options.imageUri),
                             label: options.fileName ?? 'image.jpg',
                         },
@@ -262,13 +263,34 @@ export default function TabThreeScreen() {
                 } else if (typeof reply === 'string') {
                     replyText = reply;
                 } else if (typeof reply === 'object') {
-                    // Prefer `content` property if present, otherwise stringify safely.
-                    // Some backends return an object like { content: '...', format: 'text', ... }
-                    // Use the content field when available to preserve readable text.
-                    // Fallback to JSON string so UI doesn't crash when rendering.
+                    // Prefer `content` property if present, and also include
+                    // any submessage contents from an NLIP reply so the user
+                    // can see secondary outputs (translations, extra texts, etc.).
                     const r = reply as any;
                     if (r && typeof r.content === 'string') {
-                        replyText = r.content;
+                        let combined = r.content;
+                        if (Array.isArray(r.submessages) && r.submessages.length > 0) {
+                            const subTexts = r.submessages
+                                .map((sm: any) => {
+                                    if (!sm) return '';
+                                    if (typeof sm.content === 'string') {
+                                        return sm.content;
+                                    }
+                                    if (sm.content != null) {
+                                        try {
+                                            return JSON.stringify(sm.content);
+                                        } catch {
+                                            return String(sm.content);
+                                        }
+                                    }
+                                    return '';
+                                })
+                                .filter((t: string) => t.length > 0);
+                            if (subTexts.length > 0) {
+                                combined = [combined, ...subTexts].join('\n\n');
+                            }
+                        }
+                        replyText = combined;
                     } else {
                         try {
                             replyText = JSON.stringify(reply);

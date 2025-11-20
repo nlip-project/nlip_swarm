@@ -68,7 +68,7 @@ class ImageRecognitionNlipAgent(NlipAgent):
     ) -> None:
         super().__init__(name=name, model=model, tools=tools)
 
-        self.add_instruction("You are an agent with tools for recognizing and describing images.")
+        self.add_instruction("You are an agent with tools for reading base64-encoded images and describing their content.")
 
         if instruction:
             self.add_instruction(instruction)
