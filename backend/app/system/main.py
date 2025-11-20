@@ -5,6 +5,8 @@ import logging
 from app.servers.basic_server import app as basic
 from app.servers.coordinator_server import app as coord
 from app.servers.translate_server import app as translate
+from app.servers.text_server import app as text
+from app.servers.sound_server import app as sound
 from app.servers.image_server import app as image
 from .mount_spec import MountSpec
 from .config import MOUNT_URLS
@@ -15,10 +17,12 @@ if __name__ == "__main__":
     log_to_console(logging.DEBUG)
 
     mount_spec = [
-        (coord, MOUNT_URLS["coord"]),
-        (basic, MOUNT_URLS["basic"]),
-        (translate, MOUNT_URLS["translate"]),
-        (image, MOUNT_URLS["image"]),
+        (coord, "http://0.0.0.0:8024/"),
+        (basic, "mem://basic/"),
+        (translate, "mem://translate/"),
+        (text, "mem://text/"),
+        (sound, "mem://sound/"),
+        (image, "mem://image/"),
     ]
 
     ms = MountSpec(mount_spec)

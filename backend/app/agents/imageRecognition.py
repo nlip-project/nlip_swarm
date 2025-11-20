@@ -1,74 +1,88 @@
-import os
-from typing import Optional, Any, Dict
+"""Image agent that calls a local Llava model through clearly defined tools."""
+
+from __future__ import annotations
+
 import base64
 import asyncio
 import logging
+import os
+from typing import Optional
 
 import httpx
+
 from .nlip_agent import NlipAgent
+from .base import MODEL
+
 
 logger = logging.getLogger("NLIP")
 
-MODEL = "cerebras/llama3.3-70b"
+
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
 OLLAMA_IMAGE_MODEL = os.getenv("OLLAMA_IMAGE_MODEL", "llava")
+OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "60.0"))
 
 
-# TOOL DEFINITION
-async def recognize_image(encodedImage: str, prompt: Optional[str] = None) -> Optional[str]:
+def _strip_data_url(image_base64: str) -> str:
+    if "," in image_base64 and image_base64.strip().startswith("data:"):
+        return image_base64.split(",", 1)[1]
+    return image_base64
+
+
+async def describe_image(image_base64: str, prompt: Optional[str] = None) -> str:
+    """Describe an image by calling the configured Llava model.
+
+    Args:
+        image_base64: Base64 encoded image data or data URL.
+        prompt: Optional guiding instruction for the caption.
     """
-    Recognize and describe a base64-encoded image using the configured Ollama
-    image model (e.g. llava) by posting the base64 image to the /api/generate
-    endpoint.
 
-    - `encodedImage`: base64 string of the image bytes (no data URI prefix).
-    - `prompt`: optional instruction for what to describe; falls back to a default prompt.
+    clean_b64 = _strip_data_url(image_base64)
+    try:
+        base64.b64decode(clean_b64, validate=True)
+    except Exception:  # pragma: no cover - invalid user input
+        return "The provided image payload is not valid base64 data."
 
-    Returns a natural-language description string, or None on error.
-    """
-    url = f"{OLLAMA_URL}/api/generate"
     payload = {
         "model": OLLAMA_IMAGE_MODEL,
-        "prompt": prompt or "Describe the content of this image in detail.",
-        "images": [encodedImage],
+        "prompt": prompt or "Describe everything that can be observed in this image.",
+        "images": [clean_b64],
         "stream": False,
     }
 
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(url, json=payload, timeout=60.0)
+    url = f"{OLLAMA_URL}/api/generate"
+    logger.debug("Image agent calling Llava", extra={"url": url, "model": OLLAMA_IMAGE_MODEL})
+
+    async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
+        try:
+            response = await client.post(url, json=payload)
             response.raise_for_status()
-    except httpx.RequestError as exc:
-        logger.error(f"Error while requesting {getattr(exc.request, 'url', url)!r}: {exc}")
-        return None
-    except httpx.HTTPStatusError as exc:
-        logger.error(f"Error response {exc.response.status_code} while requesting {exc.request.url!r}: {exc}")
-        return None
+        except httpx.HTTPError as exc: 
+            logger.exception("Llava request failed: %s", exc)
+            return "Unable to analyze the image because the Llava request failed."
 
     try:
-        data: Dict[str, Any] = response.json()
+        data = response.json()
     except ValueError:
-        logger.error("Failed to parse JSON response from image model")
-        return None
+        logger.exception("Llava response was not valid JSON")
+        return "Unable to analyze the image because the Llava response was invalid."
 
-    description = data.get("response")
-    if isinstance(description, str):
-        return description
+    content = data.get("response") if isinstance(data, dict) else None
+    if not isinstance(content, str):
+        return "The Llava endpoint returned an unexpected payload."
+    return content.strip()
 
-    return None
 
-class ImageRecognitionNlipAgent(NlipAgent):
-    """NLIP Image Recognition Agent with recognition tools."""
+class ImageNlipAgent(NlipAgent):
+    """NLIP agent exposing the `describe_image` tool."""
+
     def __init__(
-            self,
-            name: str = "Image",
-            model: str = MODEL,
-            instruction: Optional[str] = None,
-            tools = [recognize_image],
+        self,
+        name: str = "Image",
+        model: str = MODEL,
+        instruction: Optional[str] = None,
     ) -> None:
-        super().__init__(name=name, model=model, tools=tools)
+        super().__init__(name=name, model=model, instruction=instruction, tools=[describe_image])
 
-        self.add_instruction("You are an agent with tools for reading base64-encoded images and describing their content.")
-
-        if instruction:
-            self.add_instruction(instruction)
+        self.add_instruction(
+            "You can help users understand images by calling the `describe_image` tool."
+        )

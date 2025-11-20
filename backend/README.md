@@ -283,10 +283,10 @@ and a helper script `start-whisper.sh` that uses the official
      pip install -r backend/requirements.txt
      ```
 
-2. **Start the local Whisper server**
+2. **Start the local Whisper server** (run from the `backend/` directory)
 
    ```bash
-   bash start-whisper.sh --model large-v3 --port 9002
+   ./start-whisper.sh --model large-v3 --port 9002
    ```
 
    Flags:
@@ -327,22 +327,20 @@ pip install -r requirements.txt
 
 If you want the text and image agents to use local models via Ollama:
 
-```bash
-ollama serve &
-ollama pull llama3.2:3b
-ollama pull llava
-```
+   ```bash
+   ollama serve &
+   ollama pull llama3.1
+   ```
 
-Configure environment (customize as needed):
+   Set `OLLAMA_URL` if your server listens somewhere other than `http://localhost:11434`.
 
-- `OLLAMA_URL` – base URL (default `http://localhost:11434`).
-- `OLLAMA_TEXT_MODEL` – text model (default `llama3.2:3b`).
-- `OLLAMA_IMAGE_MODEL` – image model (default `llava`).
+3. **Launch the Whisper sidecar** (see the commands in the Audio/Sound Agent section above). From the `backend/` directory run:
 
-### 3. Start the Whisper sidecar (for audio)
+   ```bash
+   ./start-whisper.sh
+   ```
 
-Follow the steps in the “Local Whisper Server” section above and leave
-it running on `http://localhost:9002`.
+   Leave this process running on `http://localhost:9002`.
 
 ### 4. Run the multi‑agent backend
 
