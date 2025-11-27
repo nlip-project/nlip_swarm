@@ -14,10 +14,11 @@ services:
       context: ./backend
     ports:
       - 8000:8000
+      - 8024:8024
     environment:
       - OLLAMA_URL=http://host.docker.internal:11434
       - OLLAMA_MODEL=qwen2.5:7b
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/nlip_db
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
     depends_on:
       - db
 
