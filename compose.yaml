@@ -17,3 +17,22 @@ services:
     environment:
       - OLLAMA_URL=http://host.docker.internal:11434
       - OLLAMA_MODEL=qwen2.5:7b
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/nlip_db
+    depends_on:
+      - db
+
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: nlip_db
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - 5432:5432
+ 
+volumes:
+  db_data:
+    name: db_data
