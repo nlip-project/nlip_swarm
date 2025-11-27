@@ -30,9 +30,9 @@ from app.http_client.nlip_async_client import NlipAsyncClient
 sessions = {}
 
 logger = logging.getLogger("NLIP")
-#MODEL = "openai/gpt-4o-mini"
+MODEL = "openai/gpt-4o-mini"
 #MODEL = "ollama_chat/llama3.2:3b"
-MODEL = "cerebras/llama3.3-70b"
+#MODEL = "cerebras/llama3.3-70b"
 
 async def connect_to_server(url: AnyHttpUrl):
     try:

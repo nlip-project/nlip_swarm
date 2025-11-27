@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-"""NLIP server wrapper for the TextNlipAgent."""
+"""NLIP server wrapper for the SoundNlipAgent."""
 
 from nlip_sdk.nlip import NLIP_Factory, NLIP_Message
 
-from app.agents.textAgent import TextNlipAgent
+from app.agents.sound import SoundNlipAgent
 from app.http_server.nlip_session_server import NlipSessionServer, SessionManager
 
 
@@ -14,9 +14,11 @@ CAP_QUERY_PHRASES = {
 }
 
 
-def _capabilities_text(agent: TextNlipAgent) -> str:
+def _capabilities_text(agent: SoundNlipAgent) -> str:
     capabilities = [
-        "TEXT_GENERATION:Summaries, drafts, and creative writing using the generate_text tool",
+        "SPEECH_TO_TEXT:Transcribes base64-encoded audio via the transcribe_audio tool (Whisper-compatible endpoint).",
+        "LANGUAGE_HINT:Accepts optional language hints to improve recognition accuracy.",
+        "OPTIONAL_TRANSLATION:Can translate the transcript to a target locale when provided.",
     ]
     return f"AGENT:{agent.name}\n" + ", ".join(capabilities)
 
@@ -26,14 +28,14 @@ def _clean_outputs(outputs: list[str]) -> list[str]:
     return cleaned or [""]
 
 
-class TextSessionManager(SessionManager):
+class SoundSessionManager(SessionManager):
     def __init__(self) -> None:
-        self.agent = TextNlipAgent("text")
+        self.agent = SoundNlipAgent("sound")
 
     async def process_nlip(self, msg: NLIP_Message) -> NLIP_Message:
         text = msg.extract_text()
         if not text:
-            return NLIP_Factory.create_text("Text agent expects textual content.")
+            return NLIP_Factory.create_text("Sound agent expects textual content.")
 
         normalized = text.strip().lower()
         if normalized in CAP_QUERY_PHRASES:
@@ -42,7 +44,7 @@ class TextSessionManager(SessionManager):
         try:
             raw_results = await self.agent.process_query(text)
         except Exception as exc:  # pragma: no cover - defensive logging
-            return NLIP_Factory.create_text(f"Error processing text request: {exc}")
+            return NLIP_Factory.create_text(f"Error processing sound request: {exc}")
 
         results = _clean_outputs(raw_results)
         response = NLIP_Factory.create_text(results[0])
@@ -51,4 +53,4 @@ class TextSessionManager(SessionManager):
         return response
 
 
-app = NlipSessionServer("TextAgentCookie", TextSessionManager)
+app = NlipSessionServer("SoundAgentCookie", SoundSessionManager)
