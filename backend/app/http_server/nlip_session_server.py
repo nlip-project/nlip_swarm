@@ -117,7 +117,13 @@ class NlipSessionServer(FastAPI):
                 httponly=True,
                 samesite="lax",
             )
-            return {"message": "Logged in", "session_id": session_id, "user_id": user.id}
+            return {
+                "message": "Logged in",
+                "session_id": session_id,
+                "user_id": user.id,
+                "email": user.email,
+                "location": getattr(user, "location", None),
+            }
             
     def get_session_manager(self, request: Request, response: Response) -> SessionManager:
         session_id = request.cookies.get(self.session_cookie_name)

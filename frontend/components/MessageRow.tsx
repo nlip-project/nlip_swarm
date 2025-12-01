@@ -84,9 +84,11 @@ function MessageRow({ item, c }: { item: Message; c: any }) {
         ) : null}
       </View>
 
-      <View style={[styles.avatar, { borderColor: c.icon, backgroundColor: c.background }]}> 
-        <Ionicons name="person" size={18} color={c.icon} />
-      </View>
+      {item.sender === 'me' ? (
+        <View style={[styles.avatar, { borderColor: c.icon, backgroundColor: c.background }]}> 
+          <Ionicons name="person" size={18} color={c.icon} />
+        </View>
+      ) : null}
     </View>
   );
 }
