@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Image, TouchableOpacity, StyleSheet, Alert, Linking } from 'react-native';
+import { View, Image, TouchableOpacity, StyleSheet, Alert, Linking, Platform } from 'react-native';
+import Markdown from 'react-native-markdown-display';
 import { Ionicons } from '@expo/vector-icons';
 import { ThemedText } from '@/components/themed-text';
 import { formatFileSize } from './utils';
@@ -41,14 +42,51 @@ function MessageRow({ item, c }: { item: Message; c: any }) {
         ]}
       >
         {item.text ? (
-          <ThemedText
-            style={[
-              styles.bubbleText,
-              { color: item.sender === 'me' ? c.messageMeText : c.messageOtherText },
-            ]}
+          <Markdown
+            style={{
+              body: {
+                color: item.sender === 'me' ? c.messageMeText : c.messageOtherText,
+                fontSize: 16,
+                lineHeight: 20,
+                margin: 0,
+                padding: 0,
+              },
+              paragraph: {
+                marginTop: 0,
+                marginBottom: 0,
+              },
+              text: {
+                marginTop: 0,
+                marginBottom: 0,
+              },
+              code_inline: {
+                backgroundColor: item.sender === 'me' ? '#e6f2ff' : '#f3f3f3',
+                paddingHorizontal: 6,
+                paddingVertical: 0,
+                borderRadius: 6,
+                fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+              },
+            }}
+            rules={{
+              fence: (node: any) => {
+                const code = node.content || '';
+                return (
+                  <View key={node.key} style={{ marginVertical: 6 }}>
+                    <ThemedText
+                      style={[
+                        styles.codeBlock,
+                        { color: item.sender === 'me' ? c.messageMeText : c.messageOtherText, backgroundColor: item.sender === 'me' ? '#0b2f4a' : '#f3f3f3' },
+                      ]}
+                    >
+                      {code}
+                    </ThemedText>
+                  </View>
+                );
+              },
+            }}
           >
             {item.text}
-          </ThemedText>
+          </Markdown>
         ) : null}
 
         {item.imageUri ? (
@@ -146,6 +184,15 @@ const styles = StyleSheet.create({
   fileSize: {
     fontSize: 12,
     marginTop: 2,
+  },
+  codeBlock: {
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    fontSize: 14,
+    lineHeight: 18,
+    overflow: 'hidden',
   },
 });
 
