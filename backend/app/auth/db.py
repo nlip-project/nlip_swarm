@@ -61,6 +61,17 @@ async def create_user(email: str, password: str, location: Optional[str] = None)
             await session.rollback()
             raise
 
+async def get_user_by_email(email: str):
+    """Retrieve a user by email. Returns None if not found."""
+    from app.auth.models import User
+
+    # Use SQLAlchemy ORM select so we get an ORM `User` instance
+    from sqlalchemy import select
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(User).where(User.email == email))
+        user = result.scalars().one_or_none()
+        return user
 
 async def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a plaintext password against a stored hash."""

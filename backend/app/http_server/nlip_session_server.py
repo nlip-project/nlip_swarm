@@ -10,7 +10,7 @@ from nlip_sdk.nlip import NLIP_Message
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.exc import IntegrityError
 
-from app.auth.db import init_db, create_user
+from app.auth.db import init_db, create_user, get_user_by_email, verify_password
 
 logger = logging.getLogger("NLIP")
 
@@ -99,27 +99,25 @@ class NlipSessionServer(FastAPI):
             password = payload.get("password")
             if not email or not password:
                 raise HTTPException(status_code=400, detail="Email and password required")
-
-            async with AsyncSessionLocal() as session:
-                result = await session.execute(
-                    User.__table__.select().where(User.email == email)
-                )
-                user = result.scalar_one_or_none()
-                if not user or not bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')):
-                    raise HTTPException(status_code=401, detail="Invalid email or password")
-
-                # create session
-                session_id = str(uuid4())
-                manager = self.session_manager_class()
-                setattr(manager, "user_id", user.id)
-                self.sessions[session_id] = manager
-                response.set_cookie(
-                    key=self.session_cookie_name,
-                    value=session_id,
-                    httponly=True,
-                    samesite="lax",
-                )
-                return {"message": "Logged in", "session_id": session_id, "user_id": user.id}
+            
+            user = await get_user_by_email(email)
+            if not user:
+                raise HTTPException(status_code=400, detail="Invalid email or password")
+            if not await verify_password(password, user.password):
+                raise HTTPException(status_code=400, detail="Invalid email or password")
+            
+            # create session as before
+            session_id = str(uuid4())
+            manager = self.session_manager_class()
+            setattr(manager, "user_id", user.id)
+            self.sessions[session_id] = manager
+            response.set_cookie(
+                key=self.session_cookie_name,
+                value=session_id,
+                httponly=True,
+                samesite="lax",
+            )
+            return {"message": "Logged in", "session_id": session_id, "user_id": user.id}
             
     def get_session_manager(self, request: Request, response: Response) -> SessionManager:
         session_id = request.cookies.get(self.session_cookie_name)
