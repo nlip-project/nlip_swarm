@@ -127,6 +127,17 @@ class NlipSessionServer(FastAPI):
                     setattr(manager, 'last_conversation_id', conv.id)
                 except Exception:
                     pass
+                # If this conversation was just created, set its title from the first user message
+                if created_conv:
+                    try:
+                        snippet = (incoming_content or "").strip().splitlines()[0][:120]
+                        if snippet:
+                            conv.title = snippet
+                            session.add(conv)
+                            await session.commit()
+                            await session.refresh(conv)
+                    except Exception:
+                        logger.exception("Failed to set conversation title from first message")
 
             try:
                 response = await manager.process_nlip(message)
@@ -169,29 +180,43 @@ class NlipSessionServer(FastAPI):
             except Exception:
                 logger.exception("Failed to persist assistant message for NLIP response")
 
-                # If we created a new conversation for this request, include its id in the NLIP response
-                if created_conv:
-                    try:
-                        out = None
-                        # If response is a dict-like object, merge
-                        if isinstance(response, dict):
-                            out = dict(response)
-                        else:
-                            # Pydantic-like objects may have .dict()
-                            try:
-                                out = response.dict()
-                            except Exception:
-                                # fallback to __dict__ or string
-                                try:
-                                    out = dict(getattr(response, '__dict__', {}) or {})
-                                except Exception:
-                                    out = {"content": str(response)}
-                        out['conversation_id'] = str(conv.id)
-                        return out
-                    except Exception:
-                        logger.exception("Failed to attach conversation_id to NLIP response")
+            # Always normalize the manager response into a JSON-serializable dict
+            resp_body = None
+            try:
+                if isinstance(response, dict):
+                    resp_body = dict(response)
+                else:
+                    if hasattr(response, 'to_dict'):
+                        try:
+                            resp_body = response.to_dict()
+                        except Exception:
+                            resp_body = None
+                    if resp_body is None and hasattr(response, 'dict'):
+                        try:
+                            resp_body = response.dict()
+                        except Exception:
+                            resp_body = None
+                    if resp_body is None:
+                        try:
+                            resp_body = dict(getattr(response, '__dict__', {}) or {})
+                        except Exception:
+                            resp_body = None
+            except Exception:
+                resp_body = None
 
-                return response
+            if resp_body is None:
+                try:
+                    resp_body = { 'content': getattr(response, 'content', str(response)) }
+                except Exception:
+                    resp_body = { 'content': str(response) }
+
+            if created_conv:
+                try:
+                    resp_body['conversation_id'] = str(conv.id)
+                except Exception:
+                    logger.exception("Failed to attach conversation_id to NLIP response")
+
+            return resp_body
             
         @app.get("/health")
         async def health_check():
@@ -357,7 +382,17 @@ class NlipSessionServer(FastAPI):
             from app.auth.db import AsyncSessionLocal
 
             async with AsyncSessionLocal() as session:
-                conv = Conversation(title=payload.title, metadata_=payload.metadata)
+                # Try to associate conversation with authenticated user (created_by)
+                created_by = None
+                try:
+                    session_id = request.cookies.get(self.session_cookie_name)
+                    if session_id and session_id in self.sessions:
+                        manager = self.sessions[session_id]
+                        created_by = getattr(manager, 'user_id', None)
+                except Exception:
+                    created_by = None
+
+                conv = Conversation(title=payload.title, created_by=(created_by if created_by is not None else None), metadata_=payload.metadata)
                 session.add(conv)
                 await session.commit()
                 await session.refresh(conv)

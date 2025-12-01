@@ -253,12 +253,8 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Email / Location display and logout */}
-            <View style={{ alignItems: 'center', marginBottom: 8 }}>
-              <TouchableOpacity onPress={handleLogout} style={{ marginTop: 8 }}>
-                <ThemedText type="link" style={{ color: '#d9534f' }}>Log out</ThemedText>
-              </TouchableOpacity>
-            </View>
+            {/* spacer for top area (logout moved to actions at bottom) */}
+            <View style={{ height: 8 }} />
 
             <View style={styles.form}>
               <View style={styles.fieldGroup}>
@@ -326,9 +322,14 @@ export default function ProfileScreen() {
                   returnKeyType="done"
                 />
               </View>
-              <TouchableOpacity onPress={handleSave} style={{ marginTop: 8, alignSelf: 'center' }}>
-                <ThemedText type="link">Save</ThemedText>
-              </TouchableOpacity>
+              <View style={styles.actionsContainer}>
+                <TouchableOpacity onPress={handleSave} style={[styles.primaryButton, { backgroundColor: c.tint }]} accessibilityLabel="Save profile">
+                  <ThemedText style={styles.primaryButtonText}>Save</ThemedText>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleLogout} style={styles.destructiveButton} accessibilityLabel="Log out">
+                  <ThemedText style={styles.destructiveButtonText}>Log out</ThemedText>
+                </TouchableOpacity>
+              </View>
             </View>
           </ThemedView>
         </SafeAreaView>
@@ -344,7 +345,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 0,
     gap: 24,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
   },
   header: {
     alignItems: 'center',
@@ -404,5 +405,34 @@ const styles = StyleSheet.create({
   },
   phoneInput: {
     flex: 1,
+  },
+  actionsContainer: {
+    marginTop: 12,
+    alignItems: 'center',
+    width: '100%',
+    gap: 8,
+  },
+  primaryButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 28,
+    borderRadius: 12,
+    minWidth: 160,
+    alignItems: 'center',
+  },
+  primaryButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  destructiveButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    width: 160,
+  },
+  destructiveButtonText: {
+    color: '#d9534f',
+    fontWeight: '600',
   },
 });

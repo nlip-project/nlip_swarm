@@ -7,6 +7,8 @@ import {
   Dimensions,
   Pressable,
   Button,
+  Alert,
+  ScrollView,
 } from "react-native";
 import { Colors } from "@/constants/theme";
 import { ThemedText } from '@/components/themed-text';
@@ -21,7 +23,7 @@ export function Drawout({
   onSelectConversation?: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [conversations, setConversations] = useState<Array<{ id: string; title?: string; last_activity_at?: string }>>([]);
+  const [conversations, setConversations] = useState<{ id: string; title?: string; last_activity_at?: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const screenWidth = Dimensions.get("window").width;
   const panelWidth = Math.min(260, screenWidth * 0.8);
@@ -56,6 +58,35 @@ export function Drawout({
       })();
     }
   }, [open, panelWidth, slideAnim]);
+
+  async function createConversation() {
+    setLoading(true);
+    try {
+      const API_BASE = (global as any).API_BASE || 'http://0.0.0.0:8024';
+      const res = await fetch(`${API_BASE}/conversations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ title: 'New Conversation' }),
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        Alert.alert('Error', `Failed to create conversation: ${res.status} ${txt}`);
+        return;
+      }
+      const data = await res.json().catch(() => null);
+      const id = data?.id;
+      if (id && onSelectConversation) {
+        setOpen(false);
+        onSelectConversation(id);
+      }
+    } catch (e) {
+      console.warn('Failed to create conversation', e);
+      Alert.alert('Error', 'Failed to create conversation');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
@@ -96,13 +127,12 @@ export function Drawout({
         pointerEvents={open ? "auto" : "none"}
       >
         <View style={styles.panelContent}>
-          <Button
-            title="Clear"
-            onPress={clearChat}
-            accessibilityLabel="Clear chat feed"
-          />
-          {/* Conversations list */}
-          <View style={{ marginTop: 12 }}>
+          {/* top header removed; New Conversation button moved to bottom-centered footer */}
+          {/* Conversations list (scrollable) */}
+          <ScrollView
+            style={{ marginTop: 12, flex: 1 }}
+            contentContainerStyle={{ paddingBottom: 96 }}
+          >
             {!loading && conversations.length === 0 ? (
               <View style={{ paddingVertical: 8 }}>
                 <ThemedText>No conversations</ThemedText>
@@ -125,6 +155,10 @@ export function Drawout({
               </TouchableOpacity>
             ))}
             {loading ? <View style={{ paddingVertical: 8 }}><Button title="Loading..." onPress={() => {}} /></View> : null}
+          </ScrollView>
+          {/* Bottom centered new conversation button */}
+          <View style={styles.footerContainer} pointerEvents="box-none">
+            <Button title="New Conversation" onPress={() => void createConversation()} />
           </View>
         </View>
       </Animated.View>
@@ -204,6 +238,7 @@ const styles = StyleSheet.create({
   },
   panelContent: {
     padding: 8,
+    flex: 1,
   },
   panelText: {
     fontSize: 17,
@@ -213,5 +248,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: Colors.light.icon,
     paddingVertical: 6,
+  },
+  footerContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 18,
+    alignItems: 'center',
+    paddingVertical: 8,
+    backgroundColor: 'transparent',
   },
 });
