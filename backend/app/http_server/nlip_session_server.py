@@ -48,13 +48,150 @@ class NlipSessionServer(FastAPI):
             message: Annotated[NLIP_Message, Body(examples=examples)],
             manager: SessionManager = Depends(self.get_session_manager)
         ):
+            # Persist conversation and incoming message, then persist assistant response.
+            from app.auth.db import AsyncSessionLocal
+            from app.models.conversation import Conversation
+            from app.models.message import Message
+            import uuid as _uuid
+            from sqlalchemy import select
+
+            async with AsyncSessionLocal() as session:
+                conv = None
+                created_conv = False
+                # attempt to read conversation_id from message.metadata or raw dict
+                msg_meta = None
+                try:
+                    # prefer attribute 'metadata' or 'metadata_' if present on NLIP_Message
+                    msg_meta = getattr(message, 'metadata', None) or getattr(message, 'metadata_', None)
+                except Exception:
+                    msg_meta = None
+
+                raw_conv_id = None
+                if isinstance(msg_meta, dict):
+                    raw_conv_id = msg_meta.get('conversation_id') or msg_meta.get('conversation')
+
+                # If message didn't include a conversation id, try the session's last active conversation
+                if not raw_conv_id:
+                    last_conv = getattr(manager, 'last_conversation_id', None)
+                    if last_conv:
+                        raw_conv_id = str(last_conv)
+
+                if raw_conv_id:
+                    try:
+                        conv_uuid = _uuid.UUID(str(raw_conv_id))
+                        result = await session.execute(select(Conversation).where(Conversation.id == conv_uuid))
+                        conv = result.scalars().one_or_none()
+                    except Exception:
+                        conv = None
+
+                # if no conversation was found, create a new one
+                if not conv:
+                    created_by = getattr(manager, 'user_id', None)
+                    conv = Conversation(title=None, created_by=(created_by if created_by is not None else None), metadata_=(msg_meta if isinstance(msg_meta, dict) else None))
+                    session.add(conv)
+                    await session.commit()
+                    await session.refresh(conv)
+                    # mark that we created a new conversation during this request
+                    created_conv = True
+                    # store this conversation as the last active for this session manager
+                    try:
+                        setattr(manager, 'last_conversation_id', conv.id)
+                    except Exception:
+                        pass
+
+                # extract a textual representation of the incoming message
+                try:
+                    incoming_content = getattr(message, 'content', None)
+                    if incoming_content is None:
+                        # fallback: try str()
+                        incoming_content = str(message)
+                except Exception:
+                    incoming_content = str(message)
+
+                incoming_msg = Message(
+                    conversation_id=conv.id,
+                    sender_id=getattr(manager, 'user_id', None),
+                    role='user',
+                    content=incoming_content,
+                    content_type=getattr(message, 'format', None) or getattr(message, 'subformat', None) or 'text',
+                    metadata_=(msg_meta if isinstance(msg_meta, dict) else None),
+                )
+                session.add(incoming_msg)
+                # update conversation activity
+                conv.last_activity_at = func.now()
+                session.add(conv)
+                await session.commit()
+                await session.refresh(incoming_msg)
+                # ensure session manager tracks this conversation as last active
+                try:
+                    setattr(manager, 'last_conversation_id', conv.id)
+                except Exception:
+                    pass
+
             try:
                 response = await manager.process_nlip(message)
-                return response
             except Exception as e:
                 logger.error(f"Error processing NLIP message: {str(e)}")
                 traceback.print_exc(file=sys.stderr)
+                # on error, still return a 400 to client
                 raise HTTPException(status_code=400, detail=str(e))
+
+            # persist assistant response into messages table
+            try:
+                # attempt to extract response metadata and content
+                resp_meta = None
+                try:
+                    resp_meta = getattr(response, 'metadata', None) or getattr(response, 'metadata_', None)
+                except Exception:
+                    resp_meta = None
+
+                try:
+                    assistant_content = getattr(response, 'content', None)
+                    if assistant_content is None:
+                        assistant_content = str(response)
+                except Exception:
+                    assistant_content = str(response)
+
+                async with AsyncSessionLocal() as session:
+                    assistant_msg = Message(
+                        conversation_id=conv.id,
+                        sender_id=None,
+                        role='assistant',
+                        content=assistant_content,
+                        content_type=getattr(response, 'format', None) or getattr(response, 'subformat', None) or 'text',
+                        metadata_=(resp_meta if isinstance(resp_meta, dict) else None),
+                    )
+                    session.add(assistant_msg)
+                    conv.last_activity_at = func.now()
+                    session.add(conv)
+                    await session.commit()
+                    await session.refresh(assistant_msg)
+            except Exception:
+                logger.exception("Failed to persist assistant message for NLIP response")
+
+                # If we created a new conversation for this request, include its id in the NLIP response
+                if created_conv:
+                    try:
+                        out = None
+                        # If response is a dict-like object, merge
+                        if isinstance(response, dict):
+                            out = dict(response)
+                        else:
+                            # Pydantic-like objects may have .dict()
+                            try:
+                                out = response.dict()
+                            except Exception:
+                                # fallback to __dict__ or string
+                                try:
+                                    out = dict(getattr(response, '__dict__', {}) or {})
+                                except Exception:
+                                    out = {"content": str(response)}
+                        out['conversation_id'] = str(conv.id)
+                        return out
+                    except Exception:
+                        logger.exception("Failed to attach conversation_id to NLIP response")
+
+                return response
             
         @app.get("/health")
         async def health_check():
@@ -224,12 +361,53 @@ class NlipSessionServer(FastAPI):
                 session.add(conv)
                 await session.commit()
                 await session.refresh(conv)
+                # If a session exists for the request, mark this as the last active conversation
+                try:
+                    session_id = request.cookies.get(self.session_cookie_name)
+                    if session_id and session_id in self.sessions:
+                        setattr(self.sessions[session_id], 'last_conversation_id', conv.id)
+                except Exception:
+                    pass
                 return {
                     "id": str(conv.id),
                     "title": conv.title,
                     "metadata": conv.metadata_,
                     "created_at": conv.created_at.isoformat() if conv.created_at else None,
                 }
+
+        @app.get("/conversations")
+        async def list_conversations(request: Request, limit: int = 50):
+            """List recent conversations for the currently authenticated session (created_by).
+            If not authenticated, returns recent conversations ordered by last_activity_at.
+            """
+            from app.models.conversation import Conversation
+            from app.auth.db import AsyncSessionLocal
+            from sqlalchemy import select, desc
+
+            session_id = request.cookies.get(self.session_cookie_name)
+            manager = None
+            user_id = None
+            if session_id and session_id in self.sessions:
+                manager = self.sessions[session_id]
+                user_id = getattr(manager, 'user_id', None)
+
+            async with AsyncSessionLocal() as session:
+                q = select(Conversation)
+                if user_id:
+                    q = q.where(Conversation.created_by == user_id)
+                q = q.order_by(desc(Conversation.last_activity_at)).limit(limit)
+                result = await session.execute(q)
+                rows = result.scalars().all()
+                out = []
+                for c in rows:
+                    out.append({
+                        "id": str(c.id),
+                        "title": c.title,
+                        "metadata": c.metadata_,
+                        "created_at": c.created_at.isoformat() if c.created_at else None,
+                        "last_activity_at": c.last_activity_at.isoformat() if c.last_activity_at else None,
+                    })
+                return {"conversations": out}
 
         @app.get("/conversations/{conversation_id}")
         async def get_conversation(conversation_id: str):
@@ -290,6 +468,13 @@ class NlipSessionServer(FastAPI):
                 session.add(conv)
                 await session.commit()
                 await session.refresh(msg)
+                # Update session manager to mark this as last active conversation for this session
+                try:
+                    session_id = request.cookies.get(self.session_cookie_name)
+                    if session_id and session_id in self.sessions:
+                        setattr(self.sessions[session_id], 'last_conversation_id', conv_id)
+                except Exception:
+                    pass
                 return {
                     "id": str(msg.id),
                     "conversation_id": str(msg.conversation_id),

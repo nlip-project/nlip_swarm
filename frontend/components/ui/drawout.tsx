@@ -9,15 +9,20 @@ import {
   Button,
 } from "react-native";
 import { Colors } from "@/constants/theme";
+import { ThemedText } from '@/components/themed-text';
 
 export function Drawout({
   triggerPosition,
   clearChat,
+  onSelectConversation,
 }: {
   triggerPosition?: { top: number; left: number };
   clearChat?: () => void;
+  onSelectConversation?: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [conversations, setConversations] = useState<Array<{ id: string; title?: string; last_activity_at?: string }>>([]);
+  const [loading, setLoading] = useState(false);
   const screenWidth = Dimensions.get("window").width;
   const panelWidth = Math.min(260, screenWidth * 0.8);
   const slideAnim = useState(new Animated.Value(-panelWidth))[0];
@@ -29,6 +34,27 @@ export function Drawout({
       duration: 260,
       useNativeDriver: true,
     }).start();
+    if (open) {
+      // fetch conversations when panel opens
+      (async () => {
+        setLoading(true);
+        try {
+          const API_BASE = (global as any).API_BASE || 'http://0.0.0.0:8024';
+          const resp = await fetch(`${API_BASE}/conversations`, { credentials: 'include' });
+          if (resp.ok) {
+            const data = await resp.json();
+            setConversations(data.conversations || []);
+          } else {
+            setConversations([]);
+          }
+        } catch (e) {
+          console.warn('Failed to fetch conversations', e);
+          setConversations([]);
+        } finally {
+          setLoading(false);
+        }
+      })();
+    }
   }, [open, panelWidth, slideAnim]);
 
   return (
@@ -75,6 +101,31 @@ export function Drawout({
             onPress={clearChat}
             accessibilityLabel="Clear chat feed"
           />
+          {/* Conversations list */}
+          <View style={{ marginTop: 12 }}>
+            {!loading && conversations.length === 0 ? (
+              <View style={{ paddingVertical: 8 }}>
+                <ThemedText>No conversations</ThemedText>
+              </View>
+            ) : null}
+            {conversations.map((c) => (
+              <TouchableOpacity
+                key={c.id}
+                style={styles.convoRow}
+                onPress={() => {
+                  setOpen(false);
+                  if (onSelectConversation) onSelectConversation(c.id);
+                }}
+                accessibilityLabel={`Open conversation ${c.title ?? c.id}`}
+              >
+                <View style={{ paddingVertical: 8 }}>
+                  <ThemedText>{c.title ?? `Conversation ${c.id.slice(0,6)}`}</ThemedText>
+                  {c.last_activity_at ? <ThemedText style={{ fontSize: 12, color: Colors.light.icon }}>{new Date(c.last_activity_at).toLocaleString()}</ThemedText> : null}
+                </View>
+              </TouchableOpacity>
+            ))}
+            {loading ? <View style={{ paddingVertical: 8 }}><Button title="Loading..." onPress={() => {}} /></View> : null}
+          </View>
         </View>
       </Animated.View>
     </View>
@@ -157,5 +208,10 @@ const styles = StyleSheet.create({
   panelText: {
     fontSize: 17,
     color: Colors.light.text,
+  },
+  convoRow: {
+    borderBottomWidth: 1,
+    borderColor: Colors.light.icon,
+    paddingVertical: 6,
   },
 });

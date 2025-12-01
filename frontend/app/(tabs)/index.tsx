@@ -186,22 +186,23 @@ export default function TabThreeScreen() {
         }
     }
 
-    async function sendToBackend(inputText: string, options?: { imageUri?: string | null; fileUri?: string | null; fileName?: string | null; fileType?: string | null; }): Promise<any> {
+    async function sendToBackend(inputText: string, options?: { imageUri?: string | null; fileUri?: string | null; fileName?: string | null; fileType?: string | null; metadata?: { conversation_id?: string } }): Promise<any> {
         console.log('[sendToBackend] Delegating to NLIPClient with text:', inputText, 'options:', options);
-        try {
-            if (options?.imageUri) {
-                const reply = await client.sendMessage({
-                    format: 'text',
-                    subformat: 'english',
-                    content: inputText,
-                    submessages: [
-                        {
-                            format: 'image',
-                            content: await client.uriToBase64(options.imageUri),
-                            label: options.fileName ?? 'image.jpg',
-                        },
-                    ],
-                });
+            try {
+                if (options?.imageUri) {
+                    const reply = await client.sendMessage({
+                        format: 'text',
+                        subformat: 'english',
+                        content: inputText,
+                        submessages: [
+                            {
+                                format: 'image',
+                                content: await client.uriToBase64(options.imageUri),
+                                label: options.fileName ?? 'image.jpg',
+                            },
+                        ],
+                        metadata: options.metadata,
+                    } as any);
                 console.log('[sendToBackend] NLIPClient replied (image):', reply);
                 return reply;
             }
@@ -216,7 +217,8 @@ export default function TabThreeScreen() {
                     subformat: 'english',
                     content: inputText,
                     submessages: [],
-                });
+                    metadata: options?.metadata,
+                } as any);
                 console.log('[sendToBackend] NLIPClient replied:', reply);
                 return reply;
             }
@@ -270,20 +272,28 @@ export default function TabThreeScreen() {
         // Send to backend with optional attachments
         console.log('[handleSend] Sending to backend...', { trimmed, localImage, localFile, localFileName, localFileType });
         setIsSending(true);
-        void sendToBackend(trimmed, { imageUri: localImage, fileUri: localFile, fileName: localFileName, fileType: localFileType })
-            .then((reply) => {
+        (async () => {
+            try {
+                const reply: any = await sendToBackend(trimmed, { imageUri: localImage, fileUri: localFile, fileName: localFileName, fileType: localFileType });
                 console.log('[handleSend] Received reply:', reply);
-                // Ensure we don't pass an object into Text children (React Native error).
+                // If backend created a conversation for this request, persist its id locally
+                try {
+                    if (reply && typeof reply === 'object') {
+                        const maybeId = reply.conversation_id || (reply.conversationId as any) || reply.conversation;
+                        if (maybeId) {
+                            const cid = String(maybeId);
+                            AsyncStorage.setItem('current_conversation', cid).catch((e) => console.warn('[handleSend] Failed to persist conversation id', e));
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[handleSend] Error while persisting conversation id', e);
+                }
                 let replyText: string;
                 if (reply == null) {
                     replyText = '';
                 } else if (typeof reply === 'string') {
                     replyText = reply;
                 } else if (typeof reply === 'object') {
-                    // Prefer `content` property if present, otherwise stringify safely.
-                    // Some backends return an object like { content: '...', format: 'text', ... }
-                    // Use the content field when available to preserve readable text.
-                    // Fallback to JSON string so UI doesn't crash when rendering.
                     const r = reply as any;
                     if (r && typeof r.content === 'string') {
                         replyText = r.content;
@@ -309,15 +319,14 @@ export default function TabThreeScreen() {
                 requestAnimationFrame(() => {
                     listRef.current?.scrollToOffset({ offset: 0, animated: true });
                 });
-            })
-            .catch((err) => {
+            } catch (err: any) {
                 console.error('[handleSend] Error sending message:', err);
-                Alert.alert('Error', `Failed to contact server: ${err.message}`);
-            })
-            .finally(() => {
+                Alert.alert('Error', `Failed to contact server: ${err?.message || String(err)}`);
+            } finally {
                 console.log('[handleSend] Request complete, resetting isSending');
                 setIsSending(false);
-            });
+            }
+        })();
     }
 
     return (
@@ -331,7 +340,30 @@ export default function TabThreeScreen() {
                 <ThemedView style={styles.container}>
                     {/* Top spacer to avoid notch/camera area on newer iPhones (e.g. iPhone 16 Pro) */}
                     <View pointerEvents="none" style={[styles.topSpacer, { height: (insets.top || 0) + 12 }]} />
-                    <Drawout triggerPosition={drawoutPosition} clearChat={clearChat} />
+                                    <Drawout triggerPosition={drawoutPosition} clearChat={clearChat} onSelectConversation={async (convId: string) => {
+                                        try {
+                                            // fetch messages for conversation and load into UI
+                                            const API_BASE = (process?.env?.API_BASE as string) || 'http://0.0.0.0:8024';
+                                            const res = await fetch(`${API_BASE}/conversations/${convId}/messages?limit=200`, { credentials: 'include' });
+                                            if (!res.ok) {
+                                                Alert.alert('Error', 'Failed to load conversation');
+                                                return;
+                                            }
+                                            const data = await res.json();
+                                            const msgs = (data.messages || []).map((m: any) => ({
+                                                id: m.id,
+                                                text: m.content ?? '',
+                                                timestamp: m.created_at ? Date.parse(m.created_at) : Date.now(),
+                                                sender: m.role === 'user' ? 'me' : 'other',
+                                            } as Message));
+                                            setMessages(msgs.reverse());
+                                            // store current conversation id for potential future use
+                                            try { await AsyncStorage.setItem('current_conversation', convId); } catch {}
+                                        } catch (e) {
+                                            console.warn('Failed to load conversation', e);
+                                            Alert.alert('Error', 'Failed to load conversation');
+                                        }
+                                    }} />
                     <FlatList
                         ref={listRef}
                         style={styles.list}

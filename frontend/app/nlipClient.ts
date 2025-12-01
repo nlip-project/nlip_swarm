@@ -15,6 +15,7 @@ export type NLIPRequest = {
   subformat?: string;
   content?: any;
   submessages?: NLIPSubmessage[];
+  metadata?: any;
 };
 
 export default class NLIPClient {
