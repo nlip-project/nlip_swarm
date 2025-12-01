@@ -131,7 +131,7 @@ export function Drawout({
           {/* Conversations list (scrollable) */}
           <ScrollView
             style={{ marginTop: 12, flex: 1 }}
-            contentContainerStyle={{ paddingBottom: 96 }}
+            contentContainerStyle={{ paddingBottom: 24 }}
           >
             {!loading && conversations.length === 0 ? (
               <View style={{ paddingVertical: 8 }}>
@@ -139,24 +139,51 @@ export function Drawout({
               </View>
             ) : null}
             {conversations.map((c) => (
-              <TouchableOpacity
-                key={c.id}
-                style={styles.convoRow}
-                onPress={() => {
-                  setOpen(false);
-                  if (onSelectConversation) onSelectConversation(c.id);
-                }}
-                accessibilityLabel={`Open conversation ${c.title ?? c.id}`}
-              >
-                <View style={{ paddingVertical: 8 }}>
-                  <ThemedText>{c.title ?? `Conversation ${c.id.slice(0,6)}`}</ThemedText>
-                  {c.last_activity_at ? <ThemedText style={{ fontSize: 12, color: Colors.light.icon }}>{new Date(c.last_activity_at).toLocaleString()}</ThemedText> : null}
-                </View>
-              </TouchableOpacity>
+              <View key={c.id} style={styles.convoRowRow}>
+                <TouchableOpacity
+                  style={styles.convoRowTouchable}
+                  onPress={() => {
+                    setOpen(false);
+                    if (onSelectConversation) onSelectConversation(c.id);
+                  }}
+                  accessibilityLabel={`Open conversation ${c.title ?? c.id}`}
+                >
+                  <View style={{ paddingVertical: 8 }}>
+                    <ThemedText>{c.title ?? `Conversation ${c.id.slice(0,6)}`}</ThemedText>
+                    {c.last_activity_at ? <ThemedText style={{ fontSize: 12, color: Colors.light.icon }}>{new Date(c.last_activity_at).toLocaleString()}</ThemedText> : null}
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.archiveButton}
+                  onPress={async () => {
+                    // archive conversation API call
+                    try {
+                      const API_BASE = (global as any).API_BASE || 'http://0.0.0.0:8024';
+                      const res = await fetch(`${API_BASE}/conversations/${c.id}/archive`, {
+                        method: 'POST',
+                        credentials: 'include',
+                      });
+                      if (!res.ok) {
+                        const txt = await res.text().catch(() => '');
+                        Alert.alert('Archive failed', `Status ${res.status}: ${txt}`);
+                        return;
+                      }
+                      // remove from local list
+                      setConversations((prev) => prev.filter((x) => x.id !== c.id));
+                    } catch (e) {
+                      console.warn('Failed to archive conversation', e);
+                      Alert.alert('Error', 'Failed to archive conversation');
+                    }
+                  }}
+                  accessibilityLabel={`Archive conversation ${c.title ?? c.id}`}
+                >
+                  <ThemedText style={styles.archiveButtonText}>Archive</ThemedText>
+                </TouchableOpacity>
+              </View>
             ))}
             {loading ? <View style={{ paddingVertical: 8 }}><Button title="Loading..." onPress={() => {}} /></View> : null}
           </ScrollView>
-          {/* Bottom centered new conversation button */}
+          {/* Bottom centered new conversation button (placed after ScrollView so it's not overlapping) */}
           <View style={styles.footerContainer} pointerEvents="box-none">
             <Button title="New Conversation" onPress={() => void createConversation()} />
           </View>
@@ -249,13 +276,31 @@ const styles = StyleSheet.create({
     borderColor: Colors.light.icon,
     paddingVertical: 6,
   },
-  footerContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 18,
+  convoRowRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderColor: Colors.light.icon,
+    paddingVertical: 6,
+  },
+  convoRowTouchable: {
+    flex: 1,
+  },
+  archiveButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    marginLeft: 8,
+    borderRadius: 6,
+    backgroundColor: 'transparent',
+  },
+  archiveButtonText: {
+    color: '#d9534f',
+    fontWeight: '600',
+  },
+  footerContainer: {
+    alignItems: 'center',
+    paddingVertical: 12,
     backgroundColor: 'transparent',
   },
 });

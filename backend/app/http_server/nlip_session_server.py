@@ -411,7 +411,7 @@ class NlipSessionServer(FastAPI):
                 }
 
         @app.get("/conversations")
-        async def list_conversations(request: Request, limit: int = 50):
+        async def list_conversations(request: Request, limit: int = 50, include_archived: bool = False):
             """List recent conversations for the currently authenticated session (created_by).
             If not authenticated, returns recent conversations ordered by last_activity_at.
             """
@@ -430,6 +430,9 @@ class NlipSessionServer(FastAPI):
                 q = select(Conversation)
                 if user_id:
                     q = q.where(Conversation.created_by == user_id)
+                # By default, filter out archived conversations unless the client requests them
+                if not include_archived:
+                    q = q.where(Conversation.is_archived == False)
                 q = q.order_by(desc(Conversation.last_activity_at)).limit(limit)
                 result = await session.execute(q)
                 rows = result.scalars().all()
@@ -592,6 +595,52 @@ class NlipSessionServer(FastAPI):
                     })
 
                 return {"messages": out, "next_cursor": next_cursor}
+            
+        @app.post("/conversations/{conversation_id}/archive")
+        async def archive_conversation(conversation_id: str, request: Request):
+            """Mark a conversation as archived (sets `is_archived` = True).
+            Returns the conversation id and new archived flag on success.
+            """
+            from app.models.conversation import Conversation
+            from app.auth.db import AsyncSessionLocal
+            import uuid as _uuid
+            from sqlalchemy import select
+
+            try:
+                conv_id = _uuid.UUID(conversation_id)
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid conversation id")
+
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(select(Conversation).where(Conversation.id == conv_id))
+                conv = result.scalars().one_or_none()
+                if not conv:
+                    raise HTTPException(status_code=404, detail="Conversation not found")
+
+                try:
+                    conv.is_archived = True
+                    session.add(conv)
+                    await session.commit()
+                    await session.refresh(conv)
+                except Exception:
+                    logger.exception("Failed to archive conversation")
+                    raise HTTPException(status_code=500, detail="Failed to archive conversation")
+
+                # If this conversation was the session's last active conversation, clear it
+                try:
+                    session_id = request.cookies.get(self.session_cookie_name)
+                    if session_id and session_id in self.sessions:
+                        mgr = self.sessions[session_id]
+                        if getattr(mgr, 'last_conversation_id', None) == conv.id:
+                            try:
+                                setattr(mgr, 'last_conversation_id', None)
+                            except Exception:
+                                pass
+                except Exception:
+                    # non-fatal
+                    pass
+
+                return {"id": str(conv.id), "is_archived": True}
             
     def get_session_manager(self, request: Request, response: Response) -> SessionManager:
         session_id = request.cookies.get(self.session_cookie_name)
