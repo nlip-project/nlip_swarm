@@ -184,6 +184,7 @@ class NlipSessionServer(FastAPI):
                 "session_id": session_id,
                 "user_id": user.id,
                 "email": user.email,
+                "name": getattr(user, "name", None),
                 "location": getattr(user, "location", None),
             }
     

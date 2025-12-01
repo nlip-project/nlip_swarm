@@ -30,7 +30,7 @@ export default function ProfileScreen() {
 
   const [name, setName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [countryCode, setCountryCode] = useState('1');
+  const [countryCode, setCountryCode] = useState('');
   const [email, setEmail] = useState('');
   const [location, setLocation] = useState('');
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
@@ -163,7 +163,7 @@ export default function ProfileScreen() {
         email: data.email ?? email ?? null,
         location: data.location ?? location ?? null,
         phone_number: data.phone_number ?? phoneNumber ?? null,
-        country_code: data.country_code ?? countryCode ?? null,
+        country_code: data.country_code ?? (countryCode || null),
         avatar_uri: data.avatar_uri ?? avatarUri ?? null,
       };
 
@@ -251,16 +251,10 @@ export default function ProfileScreen() {
               <TouchableOpacity onPress={handleChangePhoto}>
                 <ThemedText type="link">Change Photo</ThemedText>
               </TouchableOpacity>
-              {name ? (
-                <ThemedText style={{ fontSize: 18, fontWeight: '700', marginTop: 8 }}>{name}</ThemedText>
-              ) : null}
             </View>
 
             {/* Email / Location display and logout */}
             <View style={{ alignItems: 'center', marginBottom: 8 }}>
-              {email ? (
-                <ThemedText style={{ marginTop: 6 }}>{email}{location ? ` • ${location}` : ''}</ThemedText>
-              ) : null}
               <TouchableOpacity onPress={handleLogout} style={{ marginTop: 8 }}>
                 <ThemedText type="link" style={{ color: '#d9534f' }}>Log out</ThemedText>
               </TouchableOpacity>
