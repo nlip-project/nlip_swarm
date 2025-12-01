@@ -124,6 +124,18 @@ class NlipSessionServer(FastAPI):
                 "email": user.email,
                 "location": getattr(user, "location", None),
             }
+    
+        @app.post("/logout")
+        async def logout(request: Request, response: Response):
+            session_id = request.cookies.get(self.session_cookie_name)
+            if session_id and session_id in self.sessions:
+                try:
+                    del self.sessions[session_id]
+                except KeyError:
+                    pass
+            # instruct browser to remove cookie
+            response.delete_cookie(key=self.session_cookie_name, httponly=True, samesite="lax")
+            return {"message": "Logged out"}
             
     def get_session_manager(self, request: Request, response: Response) -> SessionManager:
         session_id = request.cookies.get(self.session_cookie_name)

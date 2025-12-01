@@ -1,5 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
-import { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
   Image,
@@ -19,16 +19,20 @@ import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
 
 export default function ProfileScreen() {
+  const router = useRouter();
   const theme = useColorScheme() ?? 'light';
   const c = Colors[theme];
+  const API_BASE = (process?.env?.API_BASE as string) || 'http://0.0.0.0:8024';
 
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
+  const [name, setName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [countryCode, setCountryCode] = useState('1');
   const [email, setEmail] = useState('');
+  const [location, setLocation] = useState('');
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
 
   function handleCountryCodeChange(text: string) {
@@ -75,12 +79,86 @@ export default function ProfileScreen() {
     }
   }
 
+  // Load user data from storage (AsyncStorage or window.localStorage) on mount
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        let raw = null;
+        try {
+          raw = await AsyncStorage.getItem('user');
+        } catch {
+          // ignore
+        }
+        if (!raw && typeof window !== 'undefined' && window.localStorage) {
+          try {
+            raw = window.localStorage.getItem('user');
+          } catch {
+            // ignore
+          }
+        }
+        if (mounted && raw) {
+          const u = JSON.parse(raw);
+          if (u?.email) setEmail(u.email);
+          if (u?.location) setLocation(u.location);
+        }
+      } catch (e) {
+        console.warn('Failed to load user for profile', e);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
   function handleChangePhoto() {
     Keyboard.dismiss();
     Alert.alert('Profile Photo', 'Choose an option', [
       { text: 'Take Photo', onPress: () => void openCamera() },
       { text: 'Choose from Library', onPress: () => void pickImageFromLibrary() },
       { text: 'Cancel', style: 'cancel' },
+    ]);
+  }
+
+  async function handleLogout() {
+    Keyboard.dismiss();
+    Alert.alert('Log out', 'Are you sure you want to log out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Log out',
+        style: 'destructive',
+        onPress: async () => {
+          // First try to notify the backend to invalidate the session / clear cookie
+          try {
+            await fetch(`${API_BASE}/logout`, {
+              method: 'POST',
+              credentials: 'include',
+            });
+          } catch (e) {
+            // network error — proceed to clear client state anyway
+            console.warn('Logout request failed', e);
+          }
+
+          // Clear client-side persisted user
+          try {
+            await AsyncStorage.removeItem('user');
+          } catch (err) {
+            console.warn('Failed to remove user from AsyncStorage', err);
+          }
+          try {
+            if (typeof window !== 'undefined' && window.localStorage) {
+              window.localStorage.removeItem('user');
+            }
+          } catch {
+            // ignore
+          }
+
+          // Navigate to login
+          try {
+            router.replace('/login');
+          } catch {
+            console.warn('Navigation error on logout');
+          }
+        },
+      },
     ]);
   }
 
@@ -98,7 +176,9 @@ export default function ProfileScreen() {
                 {avatarUri ? (
                   <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
                 ) : (() => {
-                  const initials = [firstName?.[0], lastName?.[0]]
+                  const initials = name
+                    .split(' ')
+                    .map(part => part.charAt(0))
                     .filter(Boolean)
                     .join('')
                     .toUpperCase();
@@ -114,26 +194,23 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             </View>
 
+            {/* Email / Location display and logout */}
+            <View style={{ alignItems: 'center', marginBottom: 8 }}>
+              {email ? (
+                <ThemedText style={{ marginTop: 6 }}>{email}{location ? ` • ${location}` : ''}</ThemedText>
+              ) : null}
+              <TouchableOpacity onPress={handleLogout} style={{ marginTop: 8 }}>
+                <ThemedText type="link" style={{ color: '#d9534f' }}>Log out</ThemedText>
+              </TouchableOpacity>
+            </View>
+
             <View style={styles.form}>
               <View style={styles.fieldGroup}>
-                <ThemedText>First name</ThemedText>
+                <ThemedText>Name</ThemedText>
                 <TextInput
-                  value={firstName}
-                  onChangeText={setFirstName}
-                  placeholder="First name"
-                  placeholderTextColor={theme === 'dark' ? Colors.dark.icon : Colors.light.icon}
-                  style={[styles.input, { color: c.text, borderColor: c.icon, backgroundColor: c.background }]}
-                  autoCapitalize="words"
-                  returnKeyType="next"
-                />
-              </View>
-
-              <View style={styles.fieldGroup}>
-                <ThemedText>Last name</ThemedText>
-                <TextInput
-                  value={lastName}
-                  onChangeText={setLastName}
-                  placeholder="Last name"
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="Name"
                   placeholderTextColor={theme === 'dark' ? Colors.dark.icon : Colors.light.icon}
                   style={[styles.input, { color: c.text, borderColor: c.icon, backgroundColor: c.background }]}
                   autoCapitalize="words"
@@ -179,6 +256,18 @@ export default function ProfileScreen() {
                   style={[styles.input, { color: c.text, borderColor: c.icon, backgroundColor: c.background }]}
                   keyboardType="email-address"
                   returnKeyType="next"
+                />
+              </View>
+
+              <View style={styles.fieldGroup}>
+                <ThemedText>Location</ThemedText>
+                <TextInput
+                  value={location}
+                  onChangeText={setLocation}
+                  placeholder="City, Country"
+                  placeholderTextColor={theme === 'dark' ? Colors.dark.icon : Colors.light.icon}
+                  style={[styles.input, { color: c.text, borderColor: c.icon, backgroundColor: c.background }]}
+                  returnKeyType="done"
                 />
               </View>
             </View>

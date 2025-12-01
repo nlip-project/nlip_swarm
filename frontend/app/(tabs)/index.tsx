@@ -7,6 +7,8 @@ import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
     Alert,
     FlatList,
@@ -27,7 +29,23 @@ import MessageRow from '../../components/MessageRow';
 import { formatFileSize } from '../../components/utils';
 
 export default function TabThreeScreen() {
+    const router = useRouter();
     const theme = useColorScheme() ?? "light";
+    // Redirect to login if user not present in storage
+    useEffect(() => {
+        let mounted = true;
+        (async () => {
+            try {
+                const u = await AsyncStorage.getItem('user');
+                if (mounted && !u) {
+                    try { router.replace('/login'); } catch { /* ignore */ }
+                }
+            } catch (e) {
+                console.warn('Failed to read user storage', e);
+            }
+        })();
+        return () => { mounted = false; };
+    }, [router]);
     const c = Colors[theme];
     const insets = useSafeAreaInsets();
     const isWeb = Platform.OS === 'web';
