@@ -8,6 +8,7 @@ import sys
 from contextlib import asynccontextmanager
 from nlip_sdk.nlip import NLIP_Message
 from pydantic import BaseModel, EmailStr
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
 from app.auth.db import init_db, create_user, get_user_by_email, verify_password, get_user_by_id, update_user
@@ -153,7 +154,7 @@ class NlipSessionServer(FastAPI):
             """
             Expects JSON: {"email": "...", "password": "..."}
             """
-            from app.auth.models import User
+            from app.models.user import User
             from app.auth.db import AsyncSessionLocal
             import bcrypt
 
@@ -199,6 +200,178 @@ class NlipSessionServer(FastAPI):
             # instruct browser to remove cookie
             response.delete_cookie(key=self.session_cookie_name, httponly=True, samesite="lax")
             return {"message": "Logged out"}
+
+        # === Conversations & Messages endpoints ===
+        class ConversationCreate(BaseModel):
+            title: Optional[str] = None
+            metadata: Optional[dict] = None
+
+        class MessageCreate(BaseModel):
+            sender_id: Optional[str] = None
+            role: str
+            content: Optional[str] = None
+            content_type: Optional[str] = "text"
+            metadata: Optional[dict] = None
+            reply_to_id: Optional[str] = None
+
+        @app.post("/conversations")
+        async def create_conversation(payload: ConversationCreate, request: Request):
+            from app.models.conversation import Conversation
+            from app.auth.db import AsyncSessionLocal
+
+            async with AsyncSessionLocal() as session:
+                conv = Conversation(title=payload.title, metadata_=payload.metadata)
+                session.add(conv)
+                await session.commit()
+                await session.refresh(conv)
+                return {
+                    "id": str(conv.id),
+                    "title": conv.title,
+                    "metadata": conv.metadata_,
+                    "created_at": conv.created_at.isoformat() if conv.created_at else None,
+                }
+
+        @app.get("/conversations/{conversation_id}")
+        async def get_conversation(conversation_id: str):
+            from app.models.conversation import Conversation
+            from app.auth.db import AsyncSessionLocal
+            import uuid as _uuid
+
+            try:
+                conv_id = _uuid.UUID(conversation_id)
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid conversation id")
+
+            async with AsyncSessionLocal() as session:
+                from sqlalchemy import select
+                result = await session.execute(select(Conversation).where(Conversation.id == conv_id))
+                conv = result.scalars().one_or_none()
+                if not conv:
+                    raise HTTPException(status_code=404, detail="Conversation not found")
+                return {
+                    "id": str(conv.id),
+                    "title": conv.title,
+                    "metadata": conv.metadata_,
+                    "created_at": conv.created_at.isoformat() if conv.created_at else None,
+                    "last_activity_at": conv.last_activity_at.isoformat() if conv.last_activity_at else None,
+                }
+
+        @app.post("/conversations/{conversation_id}/messages")
+        async def post_message(conversation_id: str, payload: MessageCreate, request: Request):
+            from app.models.message import Message
+            from app.models.conversation import Conversation
+            from app.auth.db import AsyncSessionLocal
+            import uuid as _uuid
+
+            try:
+                conv_id = _uuid.UUID(conversation_id)
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid conversation id")
+
+            async with AsyncSessionLocal() as session:
+                from sqlalchemy import select
+                result = await session.execute(select(Conversation).where(Conversation.id == conv_id))
+                conv = result.scalars().one_or_none()
+                if not conv:
+                    raise HTTPException(status_code=404, detail="Conversation not found")
+
+                msg = Message(
+                    conversation_id=conv_id,
+                    sender_id=payload.sender_id,
+                    role=payload.role,
+                    content=payload.content,
+                    content_type=payload.content_type,
+                    metadata_=payload.metadata,
+                    reply_to_id=payload.reply_to_id,
+                )
+                session.add(msg)
+                # update conversation last activity
+                conv.last_activity_at = func.now()
+                session.add(conv)
+                await session.commit()
+                await session.refresh(msg)
+                return {
+                    "id": str(msg.id),
+                    "conversation_id": str(msg.conversation_id),
+                    "sender_id": str(msg.sender_id) if msg.sender_id else None,
+                    "role": msg.role,
+                    "content": msg.content,
+                    "content_type": msg.content_type,
+                    "metadata": msg.metadata_,
+                    "reply_to_id": str(msg.reply_to_id) if msg.reply_to_id else None,
+                    "created_at": msg.created_at.isoformat() if msg.created_at else None,
+                }
+
+        @app.get("/conversations/{conversation_id}/messages")
+        async def get_messages(conversation_id: str, limit: int = 50, cursor: Optional[str] = None):
+            """
+            Cursor format: '<created_at_iso>|<message_id>' where created_at_iso is ISO format with timezone (UTC Z allowed).
+            If no cursor is provided, returns the latest `limit` messages (newest first).
+            """
+            from app.models.message import Message
+            from app.auth.db import AsyncSessionLocal
+            import uuid as _uuid
+            from sqlalchemy import select, and_, or_, desc
+            from datetime import datetime
+
+            try:
+                conv_id = _uuid.UUID(conversation_id)
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid conversation id")
+
+            parsed_cursor = None
+            if cursor:
+                try:
+                    created_at_str, mid = cursor.split("|", 1)
+                    # accept trailing Z as UTC indicator
+                    if created_at_str.endswith("Z"):
+                        created_at_str = created_at_str.replace("Z", "+00:00")
+                    cursor_ts = datetime.fromisoformat(created_at_str)
+                    cursor_id = _uuid.UUID(mid)
+                    parsed_cursor = (cursor_ts, cursor_id)
+                except Exception:
+                    raise HTTPException(status_code=400, detail="Invalid cursor format")
+
+            async with AsyncSessionLocal() as session:
+                q = select(Message).where(Message.conversation_id == conv_id)
+                if parsed_cursor:
+                    cursor_ts, cursor_id = parsed_cursor
+                    q = q.where(
+                        or_(
+                            Message.created_at < cursor_ts,
+                            and_(Message.created_at == cursor_ts, Message.id < cursor_id),
+                        )
+                    )
+                q = q.order_by(desc(Message.created_at), desc(Message.id)).limit(limit)
+                result = await session.execute(q)
+                rows = result.scalars().all()
+
+                # prepare next cursor if we have a full page
+                next_cursor = None
+                if rows and len(rows) >= limit:
+                    last = rows[-1]
+                    ts = last.created_at.isoformat()
+                    if ts.endswith('+00:00'):
+                        ts = ts.replace('+00:00', 'Z')
+                    next_cursor = f"{ts}|{last.id}"
+
+                # return chronological order (oldest first)
+                rows.reverse()
+                out = []
+                for m in rows:
+                    out.append({
+                        "id": str(m.id),
+                        "conversation_id": str(m.conversation_id),
+                        "sender_id": str(m.sender_id) if m.sender_id else None,
+                        "role": m.role,
+                        "content": m.content,
+                        "content_type": m.content_type,
+                        "metadata": m.metadata_,
+                        "reply_to_id": str(m.reply_to_id) if m.reply_to_id else None,
+                        "created_at": m.created_at.isoformat() if m.created_at else None,
+                    })
+
+                return {"messages": out, "next_cursor": next_cursor}
             
     def get_session_manager(self, request: Request, response: Response) -> SessionManager:
         session_id = request.cookies.get(self.session_cookie_name)

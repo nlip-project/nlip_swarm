@@ -1,9 +1,9 @@
 import uuid
 from sqlalchemy import Column, Integer, String, DateTime, func
-from sqlalchemy.orm import declarative_base
 from sqlalchemy.dialects.postgresql import UUID
 
-Base = declarative_base()
+from app.models.base import Base
+
 
 class User(Base):
     __tablename__ = "users"
