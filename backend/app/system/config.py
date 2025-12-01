@@ -2,6 +2,8 @@ MOUNT_URLS = {
     "coord": "http://0.0.0.0:8024/",
     "basic": "mem://basic/",
     "translate": "mem://translate/",
+    "text": "mem://text/",
+    "sound": "mem://sound/",
     "image": "mem://image/",
 }
 

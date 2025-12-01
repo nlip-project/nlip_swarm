@@ -9,11 +9,9 @@ from .nlip_agent import NlipAgent
 
 logger = logging.getLogger("NLIP")
 
-MODEL="openai/o4-mini"
+#MODEL="openai/o4-mini"
 #MODEL="ollama_chat/llama3.2:3b"
-#MODEL = "cerebras/llama3.3-70b"
-
-translator = Translator()
+MODEL = "cerebras/llama3.3-70b"
 
 
 # TOOL DEFINITION
@@ -38,8 +36,10 @@ class TranslationNlipAgent(NlipAgent):
         name: str = "Translate",
         model: str = MODEL,
         instruction: Optional[str] = None,
-        tools = [get_translation],
+        tools: Optional[list] = None,
     ) -> None:
+        if tools is None:
+            tools = [get_translation]
         super().__init__(name=name, model=model, instruction=instruction, tools=tools)
 
         self.add_instruction("You are an agent with tools for translating text between languages.")

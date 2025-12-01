@@ -25,7 +25,8 @@ class NlipAsyncClient:
         return NlipAsyncClient(base_url)
     
     async def async_send(self, msg: NLIP_Message) -> NLIP_Message:
-        response = await self.client.post(self.base_url, json=msg.to_dict(), timeout=120.0, follow_redirects=True)
+        msg_dict = msg.to_dict() if hasattr(msg, 'to_dict') else msg.model_dump()
+        response = await self.client.post(self.base_url, json=msg_dict, timeout=120.0, follow_redirects=True)
         data = response.raise_for_status().json()
         nlip_msg = NLIP_Message(**data)
         return nlip_msg
