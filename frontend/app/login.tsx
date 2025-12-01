@@ -1,12 +1,18 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert, TouchableOpacity } from 'react-native';
-import { useRouter } from 'expo-router';
+import { View, TextInput, Button, StyleSheet, Alert, TouchableOpacity } from 'react-native';
+import { Stack, useRouter } from 'expo-router';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Colors } from '@/constants/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ThemedView } from '@/components/themed-view';
+import { ThemedText } from '@/components/themed-text';
 
 const API_BASE = (process?.env?.API_BASE as string) || 'http://0.0.0.0:8024';
 
 export default function Login() {
   const router = useRouter();
+  const theme = useColorScheme() ?? 'light';
+  const c = Colors[theme];
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -32,6 +38,7 @@ export default function Login() {
         const userObj = {
           user_id: data.user_id,
           session_id: data.session_id,
+          name: data.name ?? null,
           email: data.email ?? email,
           location: data.location ?? null,
         };
@@ -60,8 +67,10 @@ export default function Login() {
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Login</Text>
+    <>
+      <Stack.Screen options={{ headerShown: false }} />
+      <ThemedView style={styles.container}>
+        <ThemedText style={styles.title}>Login</ThemedText>
       <TextInput
         style={styles.input}
         placeholder="Email"
@@ -79,13 +88,14 @@ export default function Login() {
       />
       <Button title={loading ? 'Logging in...' : 'Login'} onPress={handleLogin} disabled={loading} />
 
-      <View style={styles.row}>
-        <Text>Don't have an account?</Text>
-        <TouchableOpacity onPress={() => router.push('/signup')}>
-          <Text style={styles.link}> Sign up</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
+        <View style={styles.row}>
+          <ThemedText>Don't have an account?</ThemedText>
+          <TouchableOpacity onPress={() => router.push('/signup')}>
+            <ThemedText style={styles.link}> Sign up</ThemedText>
+          </TouchableOpacity>
+        </View>
+      </ThemedView>
+    </>
   );
 }
 

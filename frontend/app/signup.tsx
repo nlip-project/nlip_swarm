@@ -1,14 +1,18 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert, TouchableOpacity } from 'react-native';
-import { useRouter } from 'expo-router';
+import { View, TextInput, Button, StyleSheet, Alert, TouchableOpacity } from 'react-native';
+import { Stack, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ThemedView } from '@/components/themed-view';
+import { ThemedText } from '@/components/themed-text';
 
 const API_BASE = (process?.env?.API_BASE as string) || 'http://0.0.0.0:8024';
 
 export default function Signup() {
   const router = useRouter();
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
   const [location, setLocation] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -23,7 +27,7 @@ export default function Signup() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ email, password, location }),
+        body: JSON.stringify({ name, email, password, location }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -33,6 +37,7 @@ export default function Signup() {
         const userObj = {
           user_id: data.user_id,
           session_id: data.session_id,
+          name: data.name ?? name ?? null,
           email: data.email ?? email,
           location: data.location ?? location ?? null,
         };
@@ -60,8 +65,16 @@ export default function Signup() {
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Sign Up</Text>
+    <>
+      <Stack.Screen options={{ headerShown: false }} />
+      <ThemedView style={styles.container}>
+        <ThemedText style={styles.title}>Sign Up</ThemedText>
+      <TextInput
+        style={styles.input}
+        placeholder="Full name"
+        value={name}
+        onChangeText={setName}
+      />
       <TextInput
         style={styles.input}
         placeholder="Email"
@@ -85,13 +98,14 @@ export default function Signup() {
       />
       <Button title={loading ? 'Signing up...' : 'Sign up'} onPress={handleSignup} disabled={loading} />
 
-      <View style={styles.row}>
-        <Text>Already have an account?</Text>
-        <TouchableOpacity onPress={() => router.push('/login')}>
-          <Text style={styles.link}> Log in</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
+        <View style={styles.row}>
+          <ThemedText>Already have an account?</ThemedText>
+          <TouchableOpacity onPress={() => router.push('/login')}>
+            <ThemedText style={styles.link}> Log in</ThemedText>
+          </TouchableOpacity>
+        </View>
+      </ThemedView>
+    </>
   );
 }
 

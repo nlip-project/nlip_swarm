@@ -10,7 +10,7 @@ from nlip_sdk.nlip import NLIP_Message
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.exc import IntegrityError
 
-from app.auth.db import init_db, create_user, get_user_by_email, verify_password
+from app.auth.db import init_db, create_user, get_user_by_email, verify_password, get_user_by_id, update_user
 
 logger = logging.getLogger("NLIP")
 
@@ -60,6 +60,7 @@ class NlipSessionServer(FastAPI):
             return {"status": "ok"}
         
         class UserCreate(BaseModel):
+            name: str
             email: EmailStr
             password: str
             location: Optional[str] = None
@@ -70,7 +71,8 @@ class NlipSessionServer(FastAPI):
             Expects JSON: {"email": "...", "password": "...", "location": "..."}
             """
             try:
-                created = await create_user(email=user.email, password=user.password, location=user.location)
+                # pass name through to create_user (create_user signature updated)
+                created = await create_user(email=user.email, password=user.password, location=user.location, name=user.name)
             except IntegrityError:
                 raise HTTPException(status_code=400, detail="User with that email already exists")
             # create session as before
@@ -84,7 +86,67 @@ class NlipSessionServer(FastAPI):
                 httponly=True,
                 samesite="lax",
             )
-            return {"message": "Signed up", "session_id": session_id, "user_id": created.id}
+            return {
+                "message": "Signed up",
+                "session_id": session_id,
+                "user_id": created.id,
+                "email": created.email,
+                "name": getattr(created, 'name', None),
+                "location": getattr(created, 'location', None),
+            }
+
+        @app.get("/me")
+        async def get_me(request: Request):
+            # Return current user's profile based on session cookie
+            session_id = request.cookies.get(self.session_cookie_name)
+            if not session_id or session_id not in self.sessions:
+                raise HTTPException(status_code=401, detail="Not authenticated")
+            manager = self.sessions[session_id]
+            user_id = getattr(manager, 'user_id', None)
+            if not user_id:
+                raise HTTPException(status_code=401, detail="Not authenticated")
+            user = await get_user_by_id(user_id)
+            if not user:
+                raise HTTPException(status_code=404, detail="User not found")
+            return {
+                "user_id": str(user.id),
+                "name": getattr(user, 'name', None),
+                "email": user.email,
+                "location": getattr(user, 'location', None),
+                "phone_number": getattr(user, 'phone_number', None),
+                "country_code": getattr(user, 'country_code', None),
+                "avatar_uri": getattr(user, 'avatar_uri', None),
+            }
+
+        class UserUpdate(BaseModel):
+            name: Optional[str] = None
+            location: Optional[str] = None
+            phone_number: Optional[str] = None
+            country_code: Optional[str] = None
+            avatar_uri: Optional[str] = None
+
+        @app.put("/me")
+        async def update_me(payload: UserUpdate, request: Request):
+            session_id = request.cookies.get(self.session_cookie_name)
+            if not session_id or session_id not in self.sessions:
+                raise HTTPException(status_code=401, detail="Not authenticated")
+            manager = self.sessions[session_id]
+            user_id = getattr(manager, 'user_id', None)
+            if not user_id:
+                raise HTTPException(status_code=401, detail="Not authenticated")
+            # update fields
+            updated = await update_user(user_id, **payload.dict())
+            if not updated:
+                raise HTTPException(status_code=404, detail="User not found")
+            return {
+                "user_id": str(updated.id),
+                "name": getattr(updated, 'name', None),
+                "email": updated.email,
+                "location": getattr(updated, 'location', None),
+                "phone_number": getattr(updated, 'phone_number', None),
+                "country_code": getattr(updated, 'country_code', None),
+                "avatar_uri": getattr(updated, 'avatar_uri', None),
+            }
 
         @app.post("/login")
         async def login(payload: dict, request: Request, response: Response):

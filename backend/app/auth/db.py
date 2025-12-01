@@ -39,7 +39,7 @@ async def init_db(retries: int = 5, initial_delay: float = 1.0) -> None:
     raise last_exc
 
 
-async def create_user(email: str, password: str, location: Optional[str] = None):
+async def create_user(email: str, password: str, location: Optional[str] = None, name: Optional[str] = None):
     """
     Create a new user row and return the ORM object.
     Raises sqlalchemy.exc.IntegrityError on duplicate email.
@@ -49,7 +49,8 @@ async def create_user(email: str, password: str, location: Optional[str] = None)
     
     password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
-    user = User(id=uuid.uuid4(), email=email, password=password_hash, location=location)
+    # Ensure name is stored (models.User.name is non-nullable)
+    user = User(id=uuid.uuid4(), email=email, password=password_hash, location=location, name=(name or ""))
 
     async with AsyncSessionLocal() as session:
         session.add(user)
@@ -71,6 +72,57 @@ async def get_user_by_email(email: str):
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(User).where(User.email == email))
         user = result.scalars().one_or_none()
+        return user
+
+
+async def get_user_by_id(user_id):
+    """Retrieve a user by id (UUID or string). Returns None if not found."""
+    from app.auth.models import User
+    import uuid as _uuid
+
+    # normalize uuid
+    if isinstance(user_id, str):
+        try:
+            user_id = _uuid.UUID(user_id)
+        except Exception:
+            pass
+
+    from sqlalchemy import select
+    async with AsyncSessionLocal() as session:
+        from sqlalchemy import select
+        result = await session.execute(select(User).where(User.id == user_id))
+        user = result.scalars().one_or_none()
+        return user
+
+
+async def update_user(user_id, **fields):
+    """Update user fields and return the refreshed user object."""
+    from app.auth.models import User
+    import uuid as _uuid
+
+    if isinstance(user_id, str):
+        try:
+            user_id = _uuid.UUID(user_id)
+        except Exception:
+            pass
+
+    async with AsyncSessionLocal() as session:
+        from sqlalchemy import select
+        result = await session.execute(select(User).where(User.id == user_id))
+        user = result.scalars().one_or_none()
+        if not user:
+            return None
+
+        # Only set attributes that exist on the model
+        for k, v in fields.items():
+            if v is None:
+                continue
+            if hasattr(user, k):
+                setattr(user, k, v)
+
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
         return user
 
 async def verify_password(plain_password: str, hashed_password: str) -> bool:

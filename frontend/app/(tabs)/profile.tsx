@@ -101,6 +101,10 @@ export default function ProfileScreen() {
           const u = JSON.parse(raw);
           if (u?.email) setEmail(u.email);
           if (u?.location) setLocation(u.location);
+          if (u?.name) setName(u.name);
+          if (u?.phone_number) setPhoneNumber(u.phone_number);
+          if (u?.country_code) setCountryCode(u.country_code);
+          if (u?.avatar_uri) setAvatarUri(u.avatar_uri);
         }
       } catch (e) {
         console.warn('Failed to load user for profile', e);
@@ -116,6 +120,61 @@ export default function ProfileScreen() {
       { text: 'Choose from Library', onPress: () => void pickImageFromLibrary() },
       { text: 'Cancel', style: 'cancel' },
     ]);
+  }
+
+  async function handleSave() {
+    Keyboard.dismiss();
+    const payload = {
+      name: name || undefined,
+      location: location || undefined,
+      phone_number: phoneNumber || undefined,
+      country_code: countryCode || undefined,
+      avatar_uri: avatarUri || undefined,
+    };
+
+    try {
+      const res = await fetch(`${API_BASE}/me`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        Alert.alert('Save failed', data?.detail || data?.message || 'Unknown error');
+        return;
+      }
+
+      // Merge with existing stored session_id if present
+      let existingRaw = null;
+      try { existingRaw = await AsyncStorage.getItem('user'); } catch { existingRaw = null; }
+      let existing = null;
+      if (!existingRaw && typeof window !== 'undefined' && window.localStorage) {
+        try { existingRaw = window.localStorage.getItem('user'); } catch { existingRaw = null; }
+      }
+      if (existingRaw) {
+        try { existing = JSON.parse(existingRaw); } catch { existing = null; }
+      }
+
+      const userObj: any = {
+        user_id: data.user_id ?? (existing?.user_id ?? null),
+        session_id: existing?.session_id ?? null,
+        name: data.name ?? name ?? null,
+        email: data.email ?? email ?? null,
+        location: data.location ?? location ?? null,
+        phone_number: data.phone_number ?? phoneNumber ?? null,
+        country_code: data.country_code ?? countryCode ?? null,
+        avatar_uri: data.avatar_uri ?? avatarUri ?? null,
+      };
+
+      try { await AsyncStorage.setItem('user', JSON.stringify(userObj)); } catch (e) { console.warn('Failed to persist user (AsyncStorage)', e); }
+      try { if (typeof window !== 'undefined' && window.localStorage) window.localStorage.setItem('user', JSON.stringify(userObj)); } catch { /* ignore */ }
+
+      Alert.alert('Saved', 'Profile updated');
+    } catch (err) {
+      console.error('Failed to save profile', err);
+      Alert.alert('Network error', String(err));
+    }
   }
 
   async function handleLogout() {
@@ -192,6 +251,9 @@ export default function ProfileScreen() {
               <TouchableOpacity onPress={handleChangePhoto}>
                 <ThemedText type="link">Change Photo</ThemedText>
               </TouchableOpacity>
+              {name ? (
+                <ThemedText style={{ fontSize: 18, fontWeight: '700', marginTop: 8 }}>{name}</ThemedText>
+              ) : null}
             </View>
 
             {/* Email / Location display and logout */}
@@ -270,6 +332,9 @@ export default function ProfileScreen() {
                   returnKeyType="done"
                 />
               </View>
+              <TouchableOpacity onPress={handleSave} style={{ marginTop: 8, alignSelf: 'center' }}>
+                <ThemedText type="link">Save</ThemedText>
+              </TouchableOpacity>
             </View>
           </ThemedView>
         </SafeAreaView>
