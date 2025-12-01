@@ -1,35 +1,30 @@
 import asyncio
 import logging
 from fastapi import FastAPI, Body, Request, Response, Depends, HTTPException
-from typing import Dict, Annotated
+from typing import Dict, Annotated, Optional
 from uuid import uuid4
 import traceback
 import sys
 from contextlib import asynccontextmanager
 from nlip_sdk.nlip import NLIP_Message
+from pydantic import BaseModel, EmailStr
 from sqlalchemy.exc import IntegrityError
 
-# DB imports
-from app.db import AsyncSessionLocal, init_db
-from app.auth import crud, schemas
+from app.auth.db import init_db, create_user
 
 logger = logging.getLogger("NLIP")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.debug("Lifespan started")
-    # Ensure database tables exist on startup (no-op if already created)
     try:
-        # init_db includes retry/backoff and will raise on final failure
         await init_db()
-    except Exception:
-        logger.exception("Failed to initialize DB during startup (init_db failed).")
-        raise
-
-    try:
         yield
     except asyncio.CancelledError:
         logger.debug("Lifespan cancelled")
+    except Exception:
+        logger.exception("Failed to initialize DB during startup")
+        raise
     finally:
         pass
 
@@ -64,43 +59,24 @@ class NlipSessionServer(FastAPI):
         async def health_check():
             return {"status": "ok"}
         
+        class UserCreate(BaseModel):
+            email: EmailStr
+            password: str
+            location: Optional[str] = None
+            
         @app.post("/signup")
-        async def signup(user: schemas.UserCreate, request: Request, response: Response):
+        async def signup(user: UserCreate, request: Request, response: Response):
+            """
+            Expects JSON: {"email": "...", "password": "...", "location": "..."}
+            """
             try:
-                logger.info("Signup request: %s", getattr(user, "email", "<no-email>"))
-                # existing signup logic (was disabled) - keep small safe behavior while debugging
-                # replace this with the real create-user code once we see the root cause
-                # async with AsyncSessionLocal() as db:
-                #     created = await crud.create_user(db, email=user.email, password=user.password, location=user.location)
-                return {"message": "Signup disabled in this build."}
-            except Exception as exc:
-                logger.exception("Unhandled exception in /signup")
-                raise HTTPException(status_code=500, detail="Internal server error")
-
-        class LoginSchema:
-            def __init__(self, email: str, password: str):
-                self.email = email
-                self.password = password
-
-        @app.post("/login")
-        async def login(payload: dict, request: Request, response: Response):
-            """Login with email & password. Returns a session cookie on success."""
-            email = payload.get("email")
-            password = payload.get("password")
-            if not email or not password:
-                raise HTTPException(status_code=400, detail="email and password required")
-
-            async with AsyncSessionLocal() as db:
-                user = await crud.get_user_by_email(db, email=email)
-                if not user:
-                    raise HTTPException(status_code=400, detail="Invalid credentials")
-                ok = await crud.verify_password(password, user.password_hash)
-                if not ok:
-                    raise HTTPException(status_code=400, detail="Invalid credentials")
-
+                created = await create_user(email=user.email, password=user.password, location=user.location)
+            except IntegrityError:
+                raise HTTPException(status_code=400, detail="User with that email already exists")
+            # create session as before
             session_id = str(uuid4())
             manager = self.session_manager_class()
-            setattr(manager, "user_id", user.id)
+            setattr(manager, "user_id", created.id)
             self.sessions[session_id] = manager
             response.set_cookie(
                 key=self.session_cookie_name,
@@ -108,7 +84,42 @@ class NlipSessionServer(FastAPI):
                 httponly=True,
                 samesite="lax",
             )
-            return {"message": "Logged in", "session_id": session_id, "user_id": user.id}
+            return {"message": "Signed up", "session_id": session_id, "user_id": created.id}
+
+        @app.post("/login")
+        async def login(payload: dict, request: Request, response: Response):
+            """
+            Expects JSON: {"email": "...", "password": "..."}
+            """
+            from app.auth.models import User
+            from app.auth.db import AsyncSessionLocal
+            import bcrypt
+
+            email = payload.get("email")
+            password = payload.get("password")
+            if not email or not password:
+                raise HTTPException(status_code=400, detail="Email and password required")
+
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    User.__table__.select().where(User.email == email)
+                )
+                user = result.scalar_one_or_none()
+                if not user or not bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')):
+                    raise HTTPException(status_code=401, detail="Invalid email or password")
+
+                # create session
+                session_id = str(uuid4())
+                manager = self.session_manager_class()
+                setattr(manager, "user_id", user.id)
+                self.sessions[session_id] = manager
+                response.set_cookie(
+                    key=self.session_cookie_name,
+                    value=session_id,
+                    httponly=True,
+                    samesite="lax",
+                )
+                return {"message": "Logged in", "session_id": session_id, "user_id": user.id}
             
     def get_session_manager(self, request: Request, response: Response) -> SessionManager:
         session_id = request.cookies.get(self.session_cookie_name)

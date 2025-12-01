@@ -49,3 +49,4 @@ openai-whisper>=20231117
 SQLAlchemy>=1.4.0
 asyncpg>=0.27.0
 passlib[bcrypt]>=1.7.4
+greenlet>=2.0
