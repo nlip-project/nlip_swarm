@@ -41,6 +41,17 @@ export default function ProfileScreen() {
     setCountryCode(cleaned);
   }
 
+  function formatPhoneNumber(digits: string) {
+    if (!digits) return '';
+    const d = String(digits).replace(/\D/g, '').slice(0, 10);
+    const p1 = d.slice(0, 3);
+    const p2 = d.slice(3, 6);
+    const p3 = d.slice(6, 10);
+    if (d.length <= 3) return `(${p1}`;
+    if (d.length <= 6) return `(${p1}) ${p2}`;
+    return `(${p1}) ${p2}-${p3}`;
+  }
+
   async function openCamera() {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
@@ -102,7 +113,7 @@ export default function ProfileScreen() {
           if (u?.email) setEmail(u.email);
           if (u?.location) setLocation(u.location);
           if (u?.name) setName(u.name);
-          if (u?.phone_number) setPhoneNumber(u.phone_number);
+          if (u?.phone_number) setPhoneNumber(formatPhoneNumber(String(u.phone_number).replace(/\D/g, '')));
           if (u?.country_code) setCountryCode(u.country_code);
           if (u?.avatar_uri) setAvatarUri(u.avatar_uri);
         }
@@ -124,10 +135,11 @@ export default function ProfileScreen() {
 
   async function handleSave() {
     Keyboard.dismiss();
+    const phoneDigits = phoneNumber ? phoneNumber.replace(/\D/g, '') : '';
     const payload = {
       name: name || undefined,
       location: location || undefined,
-      phone_number: phoneNumber || undefined,
+      phone_number: phoneDigits || undefined,
       country_code: countryCode || undefined,
       avatar_uri: avatarUri || undefined,
     };
@@ -162,7 +174,7 @@ export default function ProfileScreen() {
         name: data.name ?? name ?? null,
         email: data.email ?? email ?? null,
         location: data.location ?? location ?? null,
-        phone_number: data.phone_number ?? phoneNumber ?? null,
+        phone_number: data.phone_number ? formatPhoneNumber(String(data.phone_number).replace(/\D/g, '')) : (phoneNumber ?? null),
         country_code: data.country_code ?? (countryCode || null),
         avatar_uri: data.avatar_uri ?? avatarUri ?? null,
       };
@@ -288,12 +300,15 @@ export default function ProfileScreen() {
                   </View>
                   <TextInput
                     value={phoneNumber}
-                    onChangeText={setPhoneNumber}
+                    onChangeText={(text) => {
+                      const digits = text.replace(/\D/g, '').slice(0, 10);
+                      setPhoneNumber(formatPhoneNumber(digits));
+                    }}
                     placeholder="(123) 456-7890"
                     placeholderTextColor={theme === 'dark' ? Colors.dark.icon : Colors.light.icon}
                     style={[styles.input, styles.phoneInput, { color: c.text, borderColor: c.icon, backgroundColor: c.background }]}
                     keyboardType="phone-pad"
-                    returnKeyType="next"
+                    maxLength={14}
                   />
                 </View>
               </View>

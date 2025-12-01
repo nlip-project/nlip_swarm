@@ -55,8 +55,7 @@ export default function Login() {
         } catch (e) {
           // ignore
         }
-        Alert.alert('Logged in', `Welcome ${data.email ?? ''}`);
-        try { router.replace('/profile'); } catch { /* ignore */ }
+        try { router.replace('/'); } catch { /* ignore */ }
       }
     } catch (err) {
       console.error(err);
@@ -89,7 +88,7 @@ export default function Login() {
       <Button title={loading ? 'Logging in...' : 'Login'} onPress={handleLogin} disabled={loading} />
 
         <View style={styles.row}>
-          <ThemedText>Don't have an account?</ThemedText>
+          <ThemedText>Don&apos;t have an account?</ThemedText>
           <TouchableOpacity onPress={() => router.push('/signup')}>
             <ThemedText style={styles.link}> Sign up</ThemedText>
           </TouchableOpacity>

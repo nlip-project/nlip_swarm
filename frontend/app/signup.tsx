@@ -54,7 +54,7 @@ export default function Signup() {
           // ignore
         }
         Alert.alert('Signed up', `Account created for ${data.email || email}`);
-        try { router.replace('/profile'); } catch { /* ignore */ }
+        try { router.replace('/'); } catch { /* ignore */ }
       }
     } catch (err) {
       console.error(err);
