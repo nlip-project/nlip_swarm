@@ -32,6 +32,7 @@ from app._logging import logger
 #MODEL = "ollama_chat/llama3.2:3b"
 MODEL = "cerebras/llama3.3-70b"
 
+
 async def connect_to_server(url: str):
     try:
         parsed_url = urlparse(str(url))
@@ -49,17 +50,7 @@ async def connect_to_server(url: str):
     logger.info(f"Saved {netloc} with client {client}")
     return f"Connected to {scheme}://{netloc}/"
 
-async def send_to_server(url: str, message: dict) -> dict:
-    """
-    Send an NLIP message to a connected server.
-
-    Args:
-        url: The URL of the server to send the message to (must be already connected)
-        message: The NLIP message as a dictionary with keys like 'format', 'content', 'submessages'
-
-    Returns:
-        The response from the server as a dictionary.
-    """
+async def send_to_server(url: str, message: str) -> dict:
     parsed_url = urlparse(str(url))
     scheme = parsed_url.scheme
     netloc = parsed_url.netloc
@@ -200,9 +191,9 @@ def extract_image_from_message(msg: NLIP_Message) -> Optional[str]:
 
 NLIP_COORDINATOR_PROMPT = """
 You are an advanced NLIP Agent with the capability to speak to other NLIP Agents.
-You have four tools for this purpose:
+You have three tools for this purpose:
 - connect_to_server
-- send_to_server (for text-only requests)
+- send_to_server
 - get_all_capabilities
 
 When you are asked to connect to a server at a specific URL, use the connect_to_server tool with that URL to establish a connection.
@@ -211,6 +202,12 @@ For a valid connection, you should follow the connect_to_server tool call with a
 The remote Agent will respond with its [NAME] and capabilities.  Take note of this information, especially the NAME.  In future requests, if a user asks for you to send a request to NAME you should use the send_to_server tool with the URL that was associated with NAME and use the request as the msg: argument.
 
 If the user asks you: "What are your NLIP Capabilities?" you MUST call the get_all_capabilities tool first to gather capabilities for all connected servers, then summarize those capabilities in your final natural-language response. Separate the capabilities of each server clearly by server URL.
+
+When the incoming NLIP message includes media/structured content (e.g., binary/image/audio/video or other submessages), prefer relay_nlip_to_server so downstream agents receive the full payload. Use send_to_server only for simple text-only interactions.
+
+Tool calling rules:
+- Call at most ONE tool per turn. If multiple steps are needed (e.g., connect, then send), do them sequentially across turns.
+- Pass tool arguments as a JSON object with named keys, e.g., {"url": "...", "message": "..."}.
 """
 
 class CoordinatorNlipAgent(NlipAgent):
