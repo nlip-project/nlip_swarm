@@ -224,6 +224,15 @@ export default function TabThreeScreen() {
     return { conversation_id: currentConversationId };
   };
 
+  const conversationTokenSubmessage = () => {
+    if (!currentConversationId) return undefined;
+    return {
+      format: 'token',
+      subformat: 'conversation',
+      content: currentConversationId,
+    };
+  };
+
   async function sendToBackend(
     inputText: string,
     options?: {
@@ -241,12 +250,15 @@ export default function TabThreeScreen() {
     );
     try {
       const metadata = metadataForRequest();
+      const conversationToken = conversationTokenSubmessage();
+      const baseSubmessages = conversationToken ? [conversationToken] : [];
       if (options?.imageUri) {
         const reply = await client.sendMessage({
           format: "text",
           subformat: "english",
           content: inputText,
           submessages: [
+            ...baseSubmessages,
             {
               format: "binary",
               subformat: "image/base64",
@@ -269,7 +281,7 @@ export default function TabThreeScreen() {
           format: "text",
           subformat: "english",
           content: inputText,
-          submessages: [],
+          submessages: baseSubmessages,
           metadata,
         });
         console.log("[sendToBackend] NLIPClient replied:", reply);
@@ -325,11 +337,6 @@ export default function TabThreeScreen() {
       console.log("[handleSend] No content to send, returning early");
       return;
     }
-    if (!currentConversationId) {
-      Alert.alert('Select a conversation', 'Open the drawer and start a new conversation before sending messages.');
-      return;
-    }
-
     console.log("[handleSend] Creating message with trimmed text:", trimmed);
     const newMessage: Message = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -450,38 +457,50 @@ export default function TabThreeScreen() {
               </ThemedText>
             </View>
           ) : null}
-                          <Drawout
-                            triggerPosition={drawoutPosition}
-                            clearChat={clearChat}
-                            onSelectConversation={async (conversation) => {
-                              try {
-                                const convId = conversation.id;
-                                const API_BASE = (process?.env?.API_BASE as string) || 'http://0.0.0.0:8024';
-                                const res = await fetch(`${API_BASE}/conversations/${convId}/messages?limit=200`, { credentials: 'include' });
-                                if (!res.ok) {
-                                  Alert.alert('Error', 'Failed to load conversation');
-                                  return;
-                                }
-                                const data = await res.json();
-                                const msgs = (data.messages || []).map((m: any) => ({
-                                  id: m.id,
-                                  text: m.content ?? '',
-                                  timestamp: m.created_at ? Date.parse(m.created_at) : Date.now(),
-                                  sender: m.role === 'user' ? 'me' : 'other',
-                                } as Message));
-                                setMessages(msgs.reverse());
-                                const selectedConversation: ConversationSummary = {
-                                  id: convId,
-                                  title: conversation.title ?? null,
-                                };
-                                setCurrentConversation(selectedConversation);
-                                await persistConversationSelection(selectedConversation);
-                              } catch (e) {
-                                console.warn('Failed to load conversation', e);
-                                Alert.alert('Error', 'Failed to load conversation');
-                              }
-                            }}
-                          />
+          <Drawout
+            triggerPosition={drawoutPosition}
+            clearChat={clearChat}
+            apiBase={API_BASE}
+            onSelectConversation={async (conversation) => {
+              if (!conversation) {
+                clearChat();
+                setCurrentConversation(null);
+                setText("");
+                setImageUri(null);
+                setFileUri(null);
+                setFileName(null);
+                setFileSize(null);
+                setFileType(null);
+                await persistConversationSelection(null);
+                return;
+              }
+              try {
+                const convId = conversation.id;
+                const res = await fetch(`${API_BASE}/conversations/${convId}/messages?limit=200`, { credentials: 'include' });
+                if (!res.ok) {
+                  Alert.alert('Error', 'Failed to load conversation');
+                  return;
+                }
+                const data = await res.json();
+                const msgs = (data.messages || []).map((m: any) => ({
+                  id: m.id,
+                  text: m.content ?? '',
+                  timestamp: m.created_at ? Date.parse(m.created_at) : Date.now(),
+                  sender: m.role === 'user' ? 'me' : 'other',
+                } as Message));
+                setMessages(msgs.reverse());
+                const selectedConversation: ConversationSummary = {
+                  id: convId,
+                  title: conversation.title ?? null,
+                };
+                setCurrentConversation(selectedConversation);
+                await persistConversationSelection(selectedConversation);
+              } catch (e) {
+                console.warn('Failed to load conversation', e);
+                Alert.alert('Error', 'Failed to load conversation');
+              }
+            }}
+          />
           <FlatList
             ref={listRef}
             style={styles.list}

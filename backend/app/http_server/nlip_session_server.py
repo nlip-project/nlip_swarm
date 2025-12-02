@@ -70,6 +70,14 @@ class NlipSessionServer(FastAPI):
                 if isinstance(msg_meta, dict):
                     raw_conv_id = msg_meta.get('conversation_id') or msg_meta.get('conversation')
 
+                if not raw_conv_id:
+                    try:
+                        token_conv_id = message.extract_conversation_token()
+                        if token_conv_id:
+                            raw_conv_id = token_conv_id
+                    except Exception:
+                        pass
+
                 # If message didn't include a conversation id, try the session's last active conversation
                 if not raw_conv_id:
                     last_conv = getattr(manager, 'last_conversation_id', None)

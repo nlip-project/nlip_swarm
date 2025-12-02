@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   StyleSheet,
@@ -11,100 +11,95 @@ import {
   ScrollView,
 } from "react-native";
 import { Colors } from "@/constants/theme";
-import { ThemedText } from '@/components/themed-text';
+import { ThemedText } from "@/components/themed-text";
 
-export function Drawout({
-  triggerPosition,
-  clearChat,
-  onSelectConversation,
-}: {
+type ConversationSummary = { id: string; title?: string | null; last_activity_at?: string | null };
+
+type DrawoutProps = {
   triggerPosition?: { top: number; left: number };
   clearChat?: () => void;
-  onSelectConversation?: (conversation: { id: string; title?: string | null }) => void;
-}) {
+  onSelectConversation?: (conversation: { id: string; title?: string | null } | null) => void;
+  apiBase?: string;
+};
+
+export function Drawout({ triggerPosition, clearChat, onSelectConversation, apiBase }: DrawoutProps) {
   const [open, setOpen] = useState(false);
-  const [conversations, setConversations] = useState<{ id: string; title?: string; last_activity_at?: string }[]>([]);
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const screenWidth = Dimensions.get("window").width;
   const panelWidth = Math.min(260, screenWidth * 0.8);
   const slideAnim = useState(new Animated.Value(-panelWidth))[0];
 
-  // Animate panel in/out
+  const resolvedApiBase = useMemo(() => {
+    const origin = apiBase ?? process?.env?.EXPO_PUBLIC_API_BASE ?? (global as any)?.API_BASE ?? "http://0.0.0.0:8024";
+    return origin.replace(/\/$/, "");
+  }, [apiBase]);
+
   useEffect(() => {
     Animated.timing(slideAnim, {
       toValue: open ? 0 : -panelWidth,
       duration: 260,
       useNativeDriver: true,
     }).start();
-    if (open) {
-      // fetch conversations when panel opens
-      (async () => {
-        setLoading(true);
-        try {
-          const API_BASE = (global as any).API_BASE || 'http://0.0.0.0:8024';
-          const resp = await fetch(`${API_BASE}/conversations`, { credentials: 'include' });
-          if (resp.ok) {
-            const data = await resp.json();
-            setConversations(data.conversations || []);
-          } else {
-            setConversations([]);
-          }
-        } catch (e) {
-          console.warn('Failed to fetch conversations', e);
-          setConversations([]);
-        } finally {
-          setLoading(false);
-        }
-      })();
-    }
-  }, [open, panelWidth, slideAnim]);
+    if (!open) return;
 
-  async function createConversation() {
-    setLoading(true);
+    let canceled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const resp = await fetch(`${resolvedApiBase}/conversations`, { credentials: "include" });
+        if (!resp.ok) {
+          if (!canceled) setConversations([]);
+          return;
+        }
+        const data = await resp.json();
+        if (!canceled) setConversations(data.conversations || []);
+      } catch (e) {
+        console.warn("Failed to fetch conversations", e);
+        if (!canceled) setConversations([]);
+      } finally {
+        if (!canceled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      canceled = true;
+    };
+  }, [open, panelWidth, resolvedApiBase, slideAnim]);
+
+  function startNewConversation() {
+    setOpen(false);
+    clearChat?.();
+    onSelectConversation?.(null);
+  }
+
+  async function archiveConversation(id: string) {
     try {
-      const API_BASE = (global as any).API_BASE || 'http://0.0.0.0:8024';
-      const res = await fetch(`${API_BASE}/conversations`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ title: 'New Conversation' }),
+      const res = await fetch(`${resolvedApiBase}/conversations/${id}/archive`, {
+        method: "POST",
+        credentials: "include",
       });
       if (!res.ok) {
-        const txt = await res.text().catch(() => '');
-        Alert.alert('Error', `Failed to create conversation: ${res.status} ${txt}`);
+        const txt = await res.text().catch(() => "");
+        Alert.alert("Archive failed", `Status ${res.status}: ${txt}`);
         return;
       }
-      const data = await res.json().catch(() => null);
-      const id = data?.id;
-      if (id && onSelectConversation) {
-        setOpen(false);
-        onSelectConversation({ id, title: data?.title ?? 'New Conversation' });
-      }
+      setConversations((prev) => prev.filter((c) => c.id !== id));
     } catch (e) {
-      console.warn('Failed to create conversation', e);
-      Alert.alert('Error', 'Failed to create conversation');
-    } finally {
-      setLoading(false);
+      console.warn("Failed to archive conversation", e);
+      Alert.alert("Error", "Failed to archive conversation");
     }
   }
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-      {/* Overlay */}
       {open && (
-        <Pressable
-          style={styles.overlay}
-          onPress={() => setOpen(false)}
-          accessibilityLabel="Close drawout panel"
-        />
+        <Pressable style={styles.overlay} onPress={() => setOpen(false)} accessibilityLabel="Close drawout panel" />
       )}
-      {/* Hamburger icon */}
       <TouchableOpacity
         style={[
           styles.hamburger,
-          triggerPosition
-            ? { top: triggerPosition.top, left: triggerPosition.left }
-            : null,
+          triggerPosition ? { top: triggerPosition.top, left: triggerPosition.left } : null,
         ]}
         onPress={() => setOpen((v) => !v)}
         activeOpacity={0.7}
@@ -114,7 +109,6 @@ export function Drawout({
         <View style={styles.line} />
         <View style={styles.line} />
       </TouchableOpacity>
-      {/* Sliding panel */}
       <Animated.View
         style={[
           styles.panel,
@@ -127,12 +121,7 @@ export function Drawout({
         pointerEvents={open ? "auto" : "none"}
       >
         <View style={styles.panelContent}>
-          {/* top header removed; New Conversation button moved to bottom-centered footer */}
-          {/* Conversations list (scrollable) */}
-          <ScrollView
-            style={{ marginTop: 12, flex: 1 }}
-            contentContainerStyle={{ paddingBottom: 24 }}
-          >
+          <ScrollView style={{ marginTop: 12, flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }}>
             {!loading && conversations.length === 0 ? (
               <View style={{ paddingVertical: 8 }}>
                 <ThemedText>No conversations</ThemedText>
@@ -144,48 +133,36 @@ export function Drawout({
                   style={styles.convoRowTouchable}
                   onPress={() => {
                     setOpen(false);
-                    if (onSelectConversation) onSelectConversation({ id: c.id, title: c.title ?? null });
+                    onSelectConversation?.({ id: c.id, title: c.title ?? null });
                   }}
                   accessibilityLabel={`Open conversation ${c.title ?? c.id}`}
                 >
                   <View style={{ paddingVertical: 8 }}>
-                    <ThemedText>{c.title ?? `Conversation ${c.id.slice(0,6)}`}</ThemedText>
-                    {c.last_activity_at ? <ThemedText style={{ fontSize: 12, color: Colors.light.icon }}>{new Date(c.last_activity_at).toLocaleString()}</ThemedText> : null}
+                    <ThemedText>{c.title ?? `Conversation ${c.id.slice(0, 6)}`}</ThemedText>
+                    {c.last_activity_at ? (
+                      <ThemedText style={{ fontSize: 12, color: Colors.light.icon }}>
+                        {new Date(c.last_activity_at).toLocaleString()}
+                      </ThemedText>
+                    ) : null}
                   </View>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.archiveButton}
-                  onPress={async () => {
-                    // archive conversation API call
-                    try {
-                      const API_BASE = (global as any).API_BASE || 'http://0.0.0.0:8024';
-                      const res = await fetch(`${API_BASE}/conversations/${c.id}/archive`, {
-                        method: 'POST',
-                        credentials: 'include',
-                      });
-                      if (!res.ok) {
-                        const txt = await res.text().catch(() => '');
-                        Alert.alert('Archive failed', `Status ${res.status}: ${txt}`);
-                        return;
-                      }
-                      // remove from local list
-                      setConversations((prev) => prev.filter((x) => x.id !== c.id));
-                    } catch (e) {
-                      console.warn('Failed to archive conversation', e);
-                      Alert.alert('Error', 'Failed to archive conversation');
-                    }
-                  }}
+                  onPress={() => void archiveConversation(c.id)}
                   accessibilityLabel={`Archive conversation ${c.title ?? c.id}`}
                 >
                   <ThemedText style={styles.archiveButtonText}>Archive</ThemedText>
                 </TouchableOpacity>
               </View>
             ))}
-            {loading ? <View style={{ paddingVertical: 8 }}><Button title="Loading..." onPress={() => {}} /></View> : null}
+            {loading ? (
+              <View style={{ paddingVertical: 8 }}>
+                <Button title="Loading..." onPress={() => {}} />
+              </View>
+            ) : null}
           </ScrollView>
-          {/* Bottom centered new conversation button (placed after ScrollView so it's not overlapping) */}
           <View style={styles.footerContainer} pointerEvents="box-none">
-            <Button title="New Conversation" onPress={() => void createConversation()} />
+            <Button title="New Conversation" onPress={startNewConversation} />
           </View>
         </View>
       </Animated.View>
@@ -241,45 +218,14 @@ const styles = StyleSheet.create({
     elevation: 8,
     zIndex: 1200,
   },
-  tabRow: {
-    flexDirection: "row",
-    marginBottom: 12,
-    gap: 10,
-  },
-  tab: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 8,
-    backgroundColor: "transparent",
-  },
-  tabSelected: {
-    backgroundColor: Colors.light.tint,
-  },
-  tabText: {
-    color: Colors.light.icon,
-    fontWeight: "500",
-    fontSize: 16,
-  },
-  tabTextSelected: {
-    color: Colors.light.buttonText,
-  },
   panelContent: {
     padding: 8,
     flex: 1,
   },
-  panelText: {
-    fontSize: 17,
-    color: Colors.light.text,
-  },
-  convoRow: {
-    borderBottomWidth: 1,
-    borderColor: Colors.light.icon,
-    paddingVertical: 6,
-  },
   convoRowRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     borderBottomWidth: 1,
     borderColor: Colors.light.icon,
     paddingVertical: 6,
@@ -292,15 +238,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     marginLeft: 8,
     borderRadius: 6,
-    backgroundColor: 'transparent',
+    backgroundColor: "transparent",
   },
   archiveButtonText: {
-    color: '#d9534f',
-    fontWeight: '600',
+    color: "#d9534f",
+    fontWeight: "600",
   },
   footerContainer: {
-    alignItems: 'center',
+    alignItems: "center",
     paddingVertical: 12,
-    backgroundColor: 'transparent',
+    backgroundColor: "transparent",
   },
 });
