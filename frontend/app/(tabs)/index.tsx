@@ -11,7 +11,6 @@ import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from "react";
 import {
   Alert,
-  Dimensions,
   FlatList,
   Image,
   Keyboard,
@@ -27,24 +26,44 @@ import MessageRow from "../../components/MessageRow";
 import { formatFileSize } from "../../components/utils";
 import NLIPClient from "../nlipClient";
 
+type ConversationSummary = { id: string; title?: string | null };
+
 export default function TabThreeScreen() {
   const router = useRouter();
   const theme = useColorScheme() ?? "light";
-    // Redirect to login if user not present in storage
-    useEffect(() => {
-        let mounted = true;
-        (async () => {
+  const [currentConversation, setCurrentConversation] = useState<ConversationSummary | null>(null);
+  const currentConversationId = currentConversation?.id ?? null;
+  // Redirect to login if user missing; otherwise load last selected conversation
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const u = await AsyncStorage.getItem('user');
+        if (mounted && !u) {
+          try { router.replace('/login' as any); } catch { /* ignore */ }
+          return;
+        }
+        if (mounted) {
+          const stored = await AsyncStorage.getItem('current_conversation');
+          if (stored) {
             try {
-                const u = await AsyncStorage.getItem('user');
-                if (mounted && !u) {
-                    try { router.replace('/login' as any); } catch { /* ignore */ }
-                }
-            } catch (e) {
-                console.warn('Failed to read user storage', e);
+              const parsed = JSON.parse(stored);
+              if (parsed && parsed.id) {
+                setCurrentConversation({ id: parsed.id, title: parsed.title ?? null });
+              } else {
+                setCurrentConversation({ id: stored, title: null });
+              }
+            } catch {
+              setCurrentConversation({ id: stored, title: null });
             }
-        })();
-        return () => { mounted = false; };
-    }, [router]);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to read user storage', e);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [router]);
   const c = Colors[theme];
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === "web";
@@ -70,15 +89,28 @@ export default function TabThreeScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const listRef = useRef<FlatList<Message>>(null);
 
-  const screen = Dimensions.get("window");
   const drawoutPosition = {
-    top: screen.height * 0.08,
-    left: screen.width * 0.04,
+    top: (insets.top || 0) + 20,
+    left: 12,
   };
 
-  // Default to Android emulator loopback, allow override via .env for real devices
-  const API_BASE = process.env.EXPO_PUBLIC_API_BASE ?? "http://10.0.2.2:8024";
+  const API_BASE = process.env.EXPO_PUBLIC_API_BASE;
+  if (!API_BASE || API_BASE.trim().length === 0) {
+    throw new Error('EXPO_PUBLIC_API_BASE is not set. Please set it to the backend server URL which is proably looks like "http://localhost:8024"');
+  }
   const client = new NLIPClient(API_BASE, { timeout: 30000 });
+
+  const persistConversationSelection = async (conversation: ConversationSummary | null) => {
+    try {
+      if (!conversation) {
+        await AsyncStorage.removeItem('current_conversation');
+        return;
+      }
+      await AsyncStorage.setItem('current_conversation', JSON.stringify(conversation));
+    } catch (e) {
+      console.warn('Failed to persist conversation selection', e);
+    }
+  };
 
   // Clear chat function
   function clearChat() {
@@ -187,6 +219,11 @@ export default function TabThreeScreen() {
     }
   }
 
+  const metadataForRequest = () => {
+    if (!currentConversationId) return undefined;
+    return { conversation_id: currentConversationId };
+  };
+
   async function sendToBackend(
     inputText: string,
     options?: {
@@ -203,6 +240,7 @@ export default function TabThreeScreen() {
       options
     );
     try {
+      const metadata = metadataForRequest();
       if (options?.imageUri) {
         const reply = await client.sendMessage({
           format: "text",
@@ -216,6 +254,7 @@ export default function TabThreeScreen() {
               label: options.fileName ?? "image.jpg",
             },
           ],
+          metadata,
         });
         console.log("[sendToBackend] NLIPClient replied (image):", reply);
         return reply;
@@ -231,6 +270,7 @@ export default function TabThreeScreen() {
           subformat: "english",
           content: inputText,
           submessages: [],
+          metadata,
         });
         console.log("[sendToBackend] NLIPClient replied:", reply);
         return reply;
@@ -283,6 +323,10 @@ export default function TabThreeScreen() {
     const trimmed = text.trim();
     if (!trimmed && !imageUri && !fileUri) {
       console.log("[handleSend] No content to send, returning early");
+      return;
+    }
+    if (!currentConversationId) {
+      Alert.alert('Select a conversation', 'Open the drawer and start a new conversation before sending messages.');
       return;
     }
 
@@ -345,9 +389,11 @@ export default function TabThreeScreen() {
               (reply as any).conversation;
             if (maybeId) {
               const cid = String(maybeId);
-              AsyncStorage.setItem("current_conversation", cid).catch((e) =>
-                console.warn("[handleSend] Failed to persist conversation id", e)
-              );
+              const fallbackTitle =
+                currentConversation?.title ?? (trimmed ? trimmed.slice(0, 80) : null);
+              const nextConversation: ConversationSummary = { id: cid, title: fallbackTitle };
+              setCurrentConversation(nextConversation);
+              void persistConversationSelection(nextConversation);
             }
           }
         } catch (e) {
@@ -391,30 +437,51 @@ export default function TabThreeScreen() {
             pointerEvents='none'
             style={[styles.topSpacer, { height: (insets.top || 0) + 12 }]}
           />
-                          <Drawout triggerPosition={drawoutPosition} clearChat={clearChat} onSelectConversation={async (convId: string) => {
-                                        try {
-                                            // fetch messages for conversation and load into UI
-                                            const API_BASE = (process?.env?.API_BASE as string) || 'http://0.0.0.0:8024';
-                                            const res = await fetch(`${API_BASE}/conversations/${convId}/messages?limit=200`, { credentials: 'include' });
-                                            if (!res.ok) {
-                                                Alert.alert('Error', 'Failed to load conversation');
-                                                return;
-                                            }
-                                            const data = await res.json();
-                                            const msgs = (data.messages || []).map((m: any) => ({
-                                                id: m.id,
-                                                text: m.content ?? '',
-                                                timestamp: m.created_at ? Date.parse(m.created_at) : Date.now(),
-                                                sender: m.role === 'user' ? 'me' : 'other',
-                                            } as Message));
-                                            setMessages(msgs.reverse());
-                                            // store current conversation id for potential future use
-                                            try { await AsyncStorage.setItem('current_conversation', convId); } catch {}
-                                        } catch (e) {
-                                            console.warn('Failed to load conversation', e);
-                                            Alert.alert('Error', 'Failed to load conversation');
-                                        }
-                                    }} />
+          {currentConversation ? (
+            <View
+              style={[styles.conversationHeader, { borderColor: c.icon }]}
+              accessibilityLabel='Current conversation summary'
+            >
+              <ThemedText style={[styles.conversationTitle, { color: c.text }]}>
+                {currentConversation.title?.trim() || 'Untitled conversation'}
+              </ThemedText>
+              <ThemedText style={[styles.conversationSubtitle, { color: c.icon }]}>
+                {`ID: ${currentConversation.id}`}
+              </ThemedText>
+            </View>
+          ) : null}
+                          <Drawout
+                            triggerPosition={drawoutPosition}
+                            clearChat={clearChat}
+                            onSelectConversation={async (conversation) => {
+                              try {
+                                const convId = conversation.id;
+                                const API_BASE = (process?.env?.API_BASE as string) || 'http://0.0.0.0:8024';
+                                const res = await fetch(`${API_BASE}/conversations/${convId}/messages?limit=200`, { credentials: 'include' });
+                                if (!res.ok) {
+                                  Alert.alert('Error', 'Failed to load conversation');
+                                  return;
+                                }
+                                const data = await res.json();
+                                const msgs = (data.messages || []).map((m: any) => ({
+                                  id: m.id,
+                                  text: m.content ?? '',
+                                  timestamp: m.created_at ? Date.parse(m.created_at) : Date.now(),
+                                  sender: m.role === 'user' ? 'me' : 'other',
+                                } as Message));
+                                setMessages(msgs.reverse());
+                                const selectedConversation: ConversationSummary = {
+                                  id: convId,
+                                  title: conversation.title ?? null,
+                                };
+                                setCurrentConversation(selectedConversation);
+                                await persistConversationSelection(selectedConversation);
+                              } catch (e) {
+                                console.warn('Failed to load conversation', e);
+                                Alert.alert('Error', 'Failed to load conversation');
+                              }
+                            }}
+                          />
           <FlatList
             ref={listRef}
             style={styles.list}
@@ -570,6 +637,21 @@ const styles = StyleSheet.create({
   plusText: {
     fontSize: 22,
     lineHeight: 22,
+  },
+  conversationHeader: {
+    width: '100%',
+    paddingLeft: 64,
+    paddingRight: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+  conversationTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  conversationSubtitle: {
+    fontSize: 12,
+    marginTop: 4,
   },
   textInput: {
     flex: 1,

@@ -27,8 +27,9 @@ export default function RootLayout() {
       try {
         const resp = await originalFetch(input, init);
         if (resp && resp.status === 401) {
-          // clear stored user info
+          // clear stored user + chat state
           AsyncStorage.removeItem('user').catch(() => {});
+          AsyncStorage.removeItem('current_conversation').catch(() => {});
           try { if (typeof window !== 'undefined' && window.localStorage) window.localStorage.removeItem('user'); } catch {}
           // redirect to login using central navigation helper
           try { navigate('/login'); } catch {}
@@ -62,7 +63,10 @@ export default function RootLayout() {
           try { if (typeof window !== 'undefined' && window.localStorage) window.localStorage.setItem('user', JSON.stringify(userObj)); } catch { /* ignore */ }
         } else if (res.status === 401) {
           // Not authenticated — clear stored user
-          try { await AsyncStorage.removeItem('user'); } catch { /* ignore */ }
+          try {
+            await AsyncStorage.removeItem('user');
+            await AsyncStorage.removeItem('current_conversation');
+          } catch { /* ignore */ }
           try { if (typeof window !== 'undefined' && window.localStorage) window.localStorage.removeItem('user'); } catch { /* ignore */ }
         }
       } catch (e) {

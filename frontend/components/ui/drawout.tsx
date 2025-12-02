@@ -20,7 +20,7 @@ export function Drawout({
 }: {
   triggerPosition?: { top: number; left: number };
   clearChat?: () => void;
-  onSelectConversation?: (id: string) => void;
+  onSelectConversation?: (conversation: { id: string; title?: string | null }) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [conversations, setConversations] = useState<{ id: string; title?: string; last_activity_at?: string }[]>([]);
@@ -78,7 +78,7 @@ export function Drawout({
       const id = data?.id;
       if (id && onSelectConversation) {
         setOpen(false);
-        onSelectConversation(id);
+        onSelectConversation({ id, title: data?.title ?? 'New Conversation' });
       }
     } catch (e) {
       console.warn('Failed to create conversation', e);
@@ -144,7 +144,7 @@ export function Drawout({
                   style={styles.convoRowTouchable}
                   onPress={() => {
                     setOpen(false);
-                    if (onSelectConversation) onSelectConversation(c.id);
+                    if (onSelectConversation) onSelectConversation({ id: c.id, title: c.title ?? null });
                   }}
                   accessibilityLabel={`Open conversation ${c.title ?? c.id}`}
                 >

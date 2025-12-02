@@ -8,7 +8,7 @@ import time
 from typing import Any, Dict, List, Optional, cast, Callable
 from dotenv import load_dotenv
 
-#litellm._turn_on_debug() #pyright: ignore
+litellm._turn_on_debug() #pyright: ignore
 load_dotenv()
 #MODEL = "openai/gpt-4o-mini"
 #MODEL = "ollama_chat/llama3.2:3b"

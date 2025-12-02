@@ -208,18 +208,18 @@ export default function ProfileScreen() {
             console.warn('Logout request failed', e);
           }
 
-          // Clear client-side persisted user
+          // Clear all client-side persisted state so next login starts clean
           try {
-            await AsyncStorage.removeItem('user');
+            await AsyncStorage.clear();
           } catch (err) {
-            console.warn('Failed to remove user from AsyncStorage', err);
+            console.warn('Failed to clear AsyncStorage on logout', err);
           }
           try {
             if (typeof window !== 'undefined' && window.localStorage) {
-              window.localStorage.removeItem('user');
+              window.localStorage.clear();
             }
-          } catch {
-            // ignore
+          } catch (err) {
+            console.warn('Failed to clear window.localStorage on logout', err);
           }
 
           // Navigate to login

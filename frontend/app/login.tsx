@@ -34,6 +34,12 @@ export default function Login() {
       if (!res.ok) {
         Alert.alert('Login failed', data?.detail || data?.message || 'Unknown error');
       } else {
+        // Always clear conversation selection when switching accounts so chat UI starts fresh
+        try {
+          await AsyncStorage.removeItem('current_conversation');
+        } catch (e) {
+          console.warn('Failed to clear current conversation before login', e);
+        }
         // Persist minimal user info locally so we can gate routes
         const userObj = {
           user_id: data.user_id,

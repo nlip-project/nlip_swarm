@@ -33,6 +33,12 @@ export default function Signup() {
       if (!res.ok) {
         Alert.alert('Signup failed', data?.detail || data?.message || 'Unknown error');
       } else {
+        // Clear any lingering chat selection before storing the new account locally
+        try {
+          await AsyncStorage.removeItem('current_conversation');
+        } catch (e) {
+          console.warn('Failed to clear current conversation before signup login', e);
+        }
         // Persist user info so other routes can gate on it
         const userObj = {
           user_id: data.user_id,
