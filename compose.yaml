@@ -13,7 +13,10 @@ services:
     build:
       context: ./backend
     ports:
-      - 8000:8000
+      # Backend listens on 8024; expose same port to host so mobile can reach it
+      - 8024:8024
     environment:
       - OLLAMA_URL=http://host.docker.internal:11434
       - OLLAMA_MODEL=qwen2.5:7b
+      # Pass your OpenAI key through; set OPENAI_API_KEY in your shell before compose up
+      - OPENAI_API_KEY

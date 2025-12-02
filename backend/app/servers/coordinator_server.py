@@ -38,6 +38,8 @@ class NlipManager(SessionManager):
         self._initialized = True
 
     async def process_nlip(self, msg: NLIP_Message) -> NLIP_Message:
+        await self._ensure_connected()
+
         # Fast-path: if the inbound payload is audio, bypass the LLM tool-calling
         # path to avoid stuffing large base64 into the coordinator context.
         fmt = getattr(msg, "format", None)
@@ -55,10 +57,9 @@ class NlipManager(SessionManager):
                 logger.exception("Audio fast-path failed: %s", exc)
                 return NLIP_Factory.create_text(f"Unable to transcribe audio: {exc}")
 
-        text = msg.extract_text()
-
         try:
-            results = await self.agent.process_query(text)
+            # Pass the full NLIP message so media payloads (e.g., images) are preserved.
+            results = await self.agent.process_nlip(msg)
             logger.info(f"CoordinatorServerResults: {results}")
             msg = NLIP_Factory.create_text(results[0])
             for res in results[1:]:

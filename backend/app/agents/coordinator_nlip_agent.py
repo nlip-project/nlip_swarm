@@ -42,6 +42,11 @@ async def connect_to_server(url: str):
         return f"Exception: {e} testing"
 
     logger.debug(f"Parsed URL: {parsed_url}, scheme: {scheme}, netloc: {netloc}")
+    if scheme not in {"http", "https", "mem"}:
+        return f"Exception: Request URL has an unsupported protocol '{scheme}://'."
+    if not netloc:
+        return "Exception: Request URL is missing a host."
+
     client = NlipAsyncClient.create_from_url(f"{scheme}://{netloc}/nlip")
 
     hashkey = f"{scheme}://{netloc}"
@@ -56,7 +61,9 @@ async def send_to_server(url: str, message: str) -> dict:
     netloc = parsed_url.netloc
 
     hashkey = f"{scheme}://{netloc}"
-    client = sessions[hashkey]
+    client = sessions.get(hashkey)
+    if client is None:
+        return {"error": f"Not connected to {hashkey}. Call connect_to_server first."}
 
     if isinstance(message, str):
         nlip_message = NLIP_Factory.create_text(message)
@@ -108,24 +115,34 @@ def inspect_message_formats(msg: NLIP_Message) -> dict:
 
     msg_dict = msg.to_dict() if hasattr(msg, 'to_dict') else msg.model_dump()
 
-    if 'format' in msg_dict:
-        formats.add(msg_dict['format'])
-    if 'subformat' in msg_dict:
-        subformats.add(msg_dict['subformat'])
+    def _get(entry, key):
+        if isinstance(entry, dict):
+            return entry.get(key)
+        return getattr(entry, key, None)
 
-    if 'submessages' in msg_dict and isinstance(msg_dict['submessages'], list):
-        for submsg in msg_dict['submessages']:
-            if 'format' in submsg:
-                formats.add(submsg['format'])
-            if 'subformat' in submsg:
-                subformats.add(submsg['subformat'])
+    def _walk(entry) -> None:
+        fmt = _get(entry, "format")
+        if fmt:
+            formats.add(fmt)
+        sf = _get(entry, "subformat")
+        if sf:
+            subformats.add(sf)
+
+        # NLIP SDKs sometimes use either "submessages" or "messages" for nested content.
+        for key in ("submessages", "messages"):
+            children = _get(entry, key)
+            if isinstance(children, list):
+                for child in children:
+                    _walk(child)
+
+    _walk(msg_dict)
 
     return {
         'formats': list(formats),
         'subformats': list(subformats),
-        'has_binary': 'binary' in formats,
-        'has_image': any('image' in sf for sf in subformats),
-        'has_audio': any('audio' in sf for sf in subformats),
+        'has_binary': any('binary' in f.lower() for f in formats),
+        'has_image': any('image' in sf.lower() for sf in subformats) or any('image' in f.lower() for f in formats),
+        'has_audio': any('audio' in sf.lower() for sf in subformats) or any('audio' in f.lower() for f in formats),
     }
 
 
@@ -170,23 +187,34 @@ def extract_image_from_message(msg: NLIP_Message) -> Optional[str]:
     """Extract base64 image data from NLIP message."""
     msg_dict = msg.to_dict() if hasattr(msg, 'to_dict') else msg.model_dump()
 
-    content = msg_dict.get('content', '')
-    if content and isinstance(content, str) and len(content) > 500:
-        if content.startswith(('/9j/', 'iVBORw0KG', 'data:image')):
-            return content
+    def _get(entry, key):
+        if isinstance(entry, dict):
+            return entry.get(key)
+        return getattr(entry, key, None)
 
-    submessages = msg_dict.get('submessages', [])
-    if isinstance(submessages, list):
-        for submsg in submessages:
-            subformat = submsg.get('subformat', '').lower()
-            format_field = submsg.get('format', '').lower()
+    def _maybe_image(entry) -> Optional[str]:
+        content = _get(entry, "content") or ""
+        if isinstance(content, str) and len(content) > 100:
+            if content.startswith(("/9j/", "iVBORw0KG", "data:image")):
+                return content
+        for key in ("submessages", "messages"):
+            submessages = _get(entry, key) or []
+            if isinstance(submessages, list):
+                for submsg in submessages:
+                    subformat = (_get(submsg, 'subformat') or '').lower()
+                    format_field = (_get(submsg, 'format') or '').lower()
 
-            if 'image' in subformat or 'image' in format_field:
-                content = submsg.get('content', '')
-                if content and isinstance(content, str) and len(content) > 100:
-                    return content
+                    if 'image' in subformat or 'image' in format_field:
+                        content = _get(submsg, 'content') or ''
+                        if isinstance(content, str) and len(content) > 100:
+                            return content
+                        # Recurse in case there are deeper nests
+                        nested = _maybe_image(submsg)
+                        if nested:
+                            return nested
+        return None
 
-    return None
+    return _maybe_image(msg_dict)
 
 
 NLIP_COORDINATOR_PROMPT = """
@@ -241,8 +269,6 @@ class CoordinatorNlipAgent(NlipAgent):
             format_info = inspect_message_formats(nlip_msg)
 
             if format_info['has_image']:
-                logger.info(f"[{self.name}] Image detected, calling describe_image directly")
-
                 image_data = extract_image_from_message(nlip_msg)
 
                 if not image_data:
@@ -255,16 +281,13 @@ class CoordinatorNlipAgent(NlipAgent):
                     text_prompt = None
 
                 try:
-                    logger.info(f"[{self.name}] Calling describe_image with image data length: {len(image_data)}")
                     result = await describe_image(image_data, text_prompt)
-                    logger.info(f"[{self.name}] describe_image returned: {result[:100]}...")
                     return [result]
                 except Exception as exc:
                     logger.exception(f"[{self.name}] Error calling describe_image: {exc}")
                     return [f"Error processing image: {exc}"]
 
             if format_info['has_audio']:
-                logger.info(f"[{self.name}] Audio detected, routing to sound server")
                 url = 'mem://sound'
 
                 if url not in sessions:
@@ -285,7 +308,6 @@ class CoordinatorNlipAgent(NlipAgent):
                     logger.exception(f"[{self.name}] Error from sound server: {exc}")
                     return [f"Error processing audio: {exc}"]
 
-            logger.info(f"[{self.name}] No media detected, using LLM routing")
             return await super().process_nlip(nlip_msg)
 
         except Exception as e:

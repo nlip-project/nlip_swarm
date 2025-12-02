@@ -40,6 +40,26 @@ class NlipSessionServer(FastAPI):
             manager: SessionManager = Depends(self.get_session_manager)
         ):
             try:
+                msg_dict = message.to_dict() if hasattr(message, "to_dict") else message.model_dump()
+                fmt = msg_dict.get("format")
+                subfmt = msg_dict.get("subformat")
+                content_len = len(str(msg_dict.get("content") or "")) if isinstance(msg_dict, dict) else 0
+                submsgs = msg_dict.get("submessages") or msg_dict.get("messages") or []
+                logger.debug(
+                    "NLIP /nlip received",
+                    extra={
+                        "format": fmt,
+                        "subformat": subfmt,
+                        "content_len": content_len,
+                        "submessages_count": len(submsgs) if hasattr(submsgs, "__len__") else 0,
+                        "submessage_formats": [
+                            (sm.get("format"), sm.get("subformat")) for sm in submsgs if isinstance(sm, dict)
+                        ],
+                    },
+                )
+            except Exception:
+                logger.debug("NLIP /nlip received (logging failed)")
+            try:
                 response = await manager.process_nlip(message)
                 return response
             except Exception as e:
