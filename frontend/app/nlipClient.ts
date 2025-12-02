@@ -2,6 +2,8 @@
 // Provides sendMessage and attachment helpers that wrap request/response handling to the /nlip/ endpoint
 
 import * as FileSystem from 'expo-file-system';
+import { Linking } from 'react-native';
+import { navigate } from '../lib/navigation';
 
 type NLIPSubmessage = {
   format: string;
@@ -15,6 +17,7 @@ export type NLIPRequest = {
   subformat?: string;
   content?: any;
   submessages?: NLIPSubmessage[];
+  metadata?: any;
 };
 
 export default class NLIPClient {
@@ -41,6 +44,11 @@ export default class NLIPClient {
       const textBody = await res.text().catch(() => '');
 
       if (!res.ok) {
+        // If unauthorized, send the user to the login page immediately.
+        if (res.status === 401) {
+          try { navigate('/login'); } catch {}
+        }
+
         // Include response body (if any) to aid debugging; fallback to statusText
         const bodyPreview = textBody ? textBody : res.statusText;
         throw new Error(`HTTP ${res.status}: ${bodyPreview}`);

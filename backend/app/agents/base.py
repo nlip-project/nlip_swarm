@@ -1,31 +1,27 @@
+from app._logging import logger
 import asyncio
-import logging
 import json
+import litellm
+from litellm import completion
 from pydantic import TypeAdapter
 import time
-from typing import Any, Dict, List, Optional, cast
-from typing import Callable
-
-def schema_of(thing):
-    adapter = TypeAdapter(thing)
-    return adapter.json_schema()
-
-from litellm import completion
+from typing import Any, Dict, List, Optional, cast, Callable
 from dotenv import load_dotenv
 
-import litellm
-#litellm._turn_on_debug() #pyright: ignore
-
-
+litellm._turn_on_debug() #pyright: ignore
 load_dotenv()
-MODEL = "openai/gpt-4o-mini"
+#MODEL = "openai/gpt-4o-mini"
 #MODEL = "ollama_chat/llama3.2:3b"
-# MODEL = "cerebras/llama3.3-70b"
+MODEL = "cerebras/llama3.3-70b"
 
 # PROMPTS
 TOOLS_INSTRUCTIONS = """
 You are an agent with tools. When calling a tool, make sure to match the type signature of the tool.
 """
+
+def schema_of(thing):
+    adapter = TypeAdapter(thing)
+    return adapter.json_schema()
 
 class Agent:
     """
@@ -37,12 +33,11 @@ class Agent:
     - instruction (str): The system instructions
     - tools (list): the initial set of tools
     """
-    def __init__(self, name: str, model: str = MODEL, instruction: Optional[str] = None, tools: list[Callable] = []):
+    def __init__(self, name: str, model: str = MODEL, instruction: Optional[str] = None, tools: Optional[list[Callable]] = None):
         self.tstart = time.time()
         self.name: str = name
         self.model: str = model
-        self.instruction: Optional[str] = instruction
-
+        self.instruction = instruction
         self.messages: List[Any] = [
             {
                 "role": "system",
@@ -56,6 +51,7 @@ class Agent:
         self.tools: list[Dict] = []
         self.fnmap: Dict[str, Callable] = {}
         self.final_text: list[str] = []
+        self._last_nlip_json: Optional[dict] = None
 
         for fn in (tools or []):
             self.add_tool(fn)
@@ -88,74 +84,140 @@ class Agent:
         return self.tools
     
     async def _call_tool(self, name: str, args: Dict, tool_call_id: str) -> bool:
-        isFound = False
-
-        fn = self.fnmap[name]
-        if fn:
-            isFound = True
-            result = await fn(**args)
-            self.final_text.append(f"Calling tool:{name} with args:{args}")
-
-            content = result
-            if type(content) != str:
-                content = json.dumps(content)
-
-            self.messages.append(
-                {
-                    "tool_call_id": tool_call_id,
-                    "role": "tool",
-                    "name": name,
-                    "content": content
-                }
-            )
-        return isFound
-    
-    def _handle_response(self, response):
-
-        if response.content is not None:
-            self.final_text.append(response.content)
+        fn = self.fnmap.get(name)
+        if not fn:
+            logger.error(f"[{self.name}] Tool '{name}' not found in function map")
+            return False
         
-        tools_calls = response.tool_calls
+        if name == "send_to_server" and "message" not in args and self._last_nlip_json is not None:
+            args["message"] = self._last_nlip_json
 
-        if tools_calls:
-            self.messages.append(response.model_dump())
-        else:
-            self.messages.append(response)
+        logger.info(f"[{self.name}] Tool Call: {name}({args})")
 
-    async def process_query(self, query: str) -> list[str]:
-        print(f"Processing query")
+        try:
+            result = await fn(**args)
+        except Exception as exc:
+            logger.exception(f"[{self.name}] Tool '{name}' raised: {exc}")
+            result = f"Error in tool '{name}': {exc}"
 
-        self.final_text = []
-        self.messages.append({"role": "user", "content": query})
+        content = result if isinstance(result, str) else json.dumps(result)
+        logger.debug(f"[{self.name}] Tool '{name}' returned: {content[:200]}{'...' if len(str(content)) > 200 else ''}")
+        self.messages.append(
+            {
+                "tool_call_id": tool_call_id,
+                "role": "tool",
+                "name": name,
+                "content": content
+            }
+        )
+        self.final_text.append(str(result))
+        return True
+    
+    def _to_primitive(self, value: Any) -> Any:
+        """
+        Convert pydantic/BaseModel objects (and any nested collections)
+        to plain Python types so they can be JSON-serialized.
+        """
+        if value is None:
+            return None
+        if hasattr(value, "model_dump_json"):
+            try:
+                return json.loads(cast(Any, value).model_dump_json())
+            except Exception:
+                pass
+        if hasattr(value, "model_dump"):
+            try:
+                return cast(Any, value).model_dump()
+            except Exception:
+                pass
+        if isinstance(value, dict):
+            return {k: self._to_primitive(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple, set)):
+            return [self._to_primitive(v) for v in value]
+        return value
 
-        response = cast(Any, completion(
-            model=self.model, messages=self.messages, tools=self.tools
-        ))
+    def _serialize_assistant(self, response: Any) -> Dict[str, Any]:
+        """
+        Normalize assistant responses (with or without tool calls) into the
+        wire format expected by OpenAI-style chat models.
+        """
+        if isinstance(response, dict):
+            return cast(Dict[str, Any], self._to_primitive(response))
 
-        response_message = cast(Any, response).choices[0].message
+        msg: Dict[str, Any] = {
+            "role": getattr(response, "role", None) or "assistant",
+        }
 
-        if response_message is None:
-            import sys
-            print(f"RESPONSE:{response_message}")
-            sys.exit(1)
+        if hasattr(response, "content"):
+            msg["content"] = self._to_primitive(getattr(response, "content"))
 
-        self._handle_response(response_message)
-        tool_calls = list(response_message.tool_calls or [])
+        tool_calls = getattr(response, "tool_calls", None)
+        if tool_calls:
+            msg["tool_calls"] = [self._to_primitive(tc) for tc in tool_calls]
+        return cast(Dict[str, Any], self._to_primitive(msg))
+
+    def _handle_response(self, response: Any):
+        if getattr(response, "content", None):
+            self.final_text.append(response.content)
+
+        self.messages.append(self._serialize_assistant(response))
+
+
+    async def _drive_llm(self) -> list[str]:
+        response = cast(Any, completion(model=self.model, messages=self.messages, tools=self.tools))
+        response_msg = response.choices[0].message
+        if response_msg is None:
+            raise RuntimeError("No Response from LLM")
+        
+        self._handle_response(response_msg)
+        tool_calls = list(getattr(response_msg, "tool_calls", None) or [])
 
         while tool_calls:
             for tool_call in tool_calls:
                 tool_name = tool_call.function.name
-                tool_args = json.loads(tool_call.function.arguments)
-                tool_call_id = tool_call.id
+                tool_args = json.loads(tool_call.function.arguments or "{}")
+                await self._call_tool(tool_name, tool_args, tool_call.id)
 
-                if await self._call_tool(tool_name, tool_args, tool_call_id) == False:
-                    self.messages.append({"role": "user", "content": f"Tool '{tool_name}' not found."})
+            response = cast(Any, completion(model=self.model, messages=self.messages, tools=self.tools))
+            response_msg = response.choices[0].message
+            self._handle_response(response_msg)
+            tool_calls = list(getattr(response_msg, "tool_calls", None) or [])
 
-            response = cast(Any, completion(
-                model=self.model, messages=self.messages, tools=self.tools
-            ))
-            response_message = cast(Any, response).choices[0].message
-            self._handle_response(response_message)
-            tool_calls = list(response_message.tool_calls or [])
-        
         return self.final_text
+
+    async def process_query(self, query: str) -> list[str]:
+        self.final_text = []
+        self.messages.append({
+            "role": "user",
+            "content": query
+        })
+        return await self._drive_llm()
+    
+    async def process_nlip(self, nlip_msg: Any) -> list[str]:
+        self.final_text = []
+
+        try:
+            nlip_json = nlip_msg.to_dict()
+        except (AttributeError, TypeError):
+            try:
+                nlip_json = nlip_msg.model_dump()
+            except (AttributeError, TypeError) as e:
+                raise RuntimeError(f"Could not convert NLIP_Message to dict: {e}")
+        self._last_nlip_json = nlip_json
+        self.messages.append({
+            "role": "user",
+            "content": "ORIGINAL_NLIP_JSON:\n" +json.dumps(nlip_json, ensure_ascii=False)
+        })
+
+        text = ""
+        try:
+            text = nlip_msg.extract_text() or ""
+        except (AttributeError, TypeError):
+            pass
+        user_text = text if text.strip() else "(no textual content in NLIP Message)"
+        self.messages.append({
+            "role": "user",
+            "content": user_text
+        })
+
+        return await self._drive_llm()

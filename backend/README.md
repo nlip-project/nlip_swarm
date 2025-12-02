@@ -1,158 +1,262 @@
-# Backend Endpoint
+# NLIP Swarm Backend
 
-### /capabilities
+Multi‑agent backend for the NLIP protocol, built on FastAPI. It exposes
+an HTTP NLIP endpoint that fans out to multiple specialized agents for
+text, translation, image understanding, and audio (Whisper) processing.
 
-GET endpoint to check what capabilities the manager has.
+This README describes the current code layout (including the newer
+coordinator/agent architecture) and how to run and exercise it locally.
 
-### /nlip
+---
 
-POST endpoint that acts as the connection to a frontend machine
-accepting NLIP message requests as the body and returning NLIP
-message responses from the swarm manager.
+## High‑Level Architecture
 
-## Translation Agent
+- **Frontend → Coordinator**  
+  Clients send NLIP messages over HTTP to a coordinator server
+  (FastAPI) at `/nlip`. The coordinator maintains per‑browser sessions
+  via cookies.
 
-Accepts an NLIP `process` request and routes user messages through an
-English pivot so downstream agents can reason in a single language:
+- **Coordinator → Agents**  
+  The coordinator is an NLIP agent (`CoordinatorNlipAgent`) that can
+  discover and call other NLIP agents via tools:
 
-1. Detect/receive the user locale.
-2. Translate incoming text into English via the local Ollama instance.
-3. Run domain logic (currently echoes the English text as a scaffold).
-4. Translate the response back into the user's locale before returning it.
+  - `connect_to_server(url)`
+  - `send_to_server(url, message)`
+  - `get_all_capabilities()`
 
-This keeps the internal prompts consistent while farmers in Uganda (or any
-other locale) interact with the chatbot in their preferred language.
+  It discovers agent endpoints from `app.system.config.DEFAULT_AGENT_ENDPOINTS`.
 
-## Request Example:
+- **Agents as FastAPI apps**  
+  Each logical agent (basic LLM, translation, image recognition, text)
+  is wrapped in a small FastAPI app using
+  `app.http_server.nlip_session_server.NlipSessionServer`. All expose:
 
+  - `POST /nlip` – process an `NLIP_Message` and return another.
+  - `GET /health` – simple health check.
+
+- **Process topology**  
+  `app.system.main` uses `MountSpec` to:
+
+  - Start the coordinator over HTTP on `http://0.0.0.0:8024/nlip`.
+  - Register the agent apps in‑process behind `mem://` URLs so the
+    coordinator can reach them without extra network hops.
+
+---
+
+## Code Layout
+
+Top‑level in `backend/`:
+
+- `app/`
+  - `agents/`
+    - `base.py` – generic tool‑using LLM `Agent` built on `litellm`.
+    - `nlip_agent.py` – NLIP‑aware agent base class (specializes `Agent` for NLIP messages).
+    - `coordinator_nlip_agent.py` – coordinator agent with tools to talk to other NLIP servers.
+    - `translation.py` – `TranslationNlipAgent` based on `googletrans`.
+    - `imageRecognition.py` – `ImageRecognitionNlipAgent` using Ollama’s image model (e.g. `llava`).
+    - `textAgent.py` – `LLamaTextAgent` wrapper around the Ollama text model for NLIP text tasks.
+    - `sound.py` – `SoundAgent` for Whisper‑based ASR plus optional translation.
+  - `servers/`
+    - `basic_server.py` – wraps a generic `Agent` in a `NlipSessionServer`.
+    - `coordinator_server.py` – exposes the `CoordinatorNlipAgent` as HTTP `/nlip`.
+    - `translate_server.py` – NLIP translation server using `TranslationNlipAgent`.
+    - `image_server.py` – NLIP image recognition server using `ImageRecognitionNlipAgent`.
+    - `text_server.py` – NLIP text server using `LLamaTextAgent`.
+  - `http_server/`
+    - `nlip_session_server.py` – reusable FastAPI `NlipSessionServer` + `SessionManager` abstraction with cookie‑based sessions and `/nlip` + `/health` routes.
+  - `http_client/`
+    - `nlip_async_client.py` – async client that can talk to HTTP URLs or in‑process `mem://` endpoints via `httpx.ASGITransport`.
+  - `system/`
+    - `config.py` – defines `MOUNT_URLS` and `DEFAULT_AGENT_ENDPOINTS`.
+    - `mount_spec.py` – utility that starts HTTP servers or registers in‑process apps for `mem://` URLs.
+    - `main.py` – main entrypoint that wires coordinator + agents and runs them.
+  - `deprecated/`
+    - Original “supervisor” stack (`supervisor.py`, `api.py`, `routes/`) that used a monolithic app at `/nlip` with its own translation and image logic. Kept for reference; some pieces are out of sync with the current agents.
+  - `_logging.py` – logging configuration used throughout.
+  - `__init__.py` – defines `MEM_APP_TBL`, the registry for in‑process apps.
+
+Other top‑level files:
+
+- `run.py` – legacy uvicorn launcher (`app.main:app`, currently not wired into the new coordinator stack).
+- `requirements.txt` – backend Python dependencies.
+- `pyproject.toml` – project metadata (`nlip-swarm-registrar`).
+- `tests/` – pytest suite for routes, translation/image flow, and sound agent.
+
+---
+
+## HTTP Endpoints
+
+### Coordinator Server (current main entrypoint)
+
+When you run `app.system.main`, it mounts the coordinator server at:
+
+- `POST /nlip` – accept an `NLIP_Message` and return a response message.
+- `GET /health` – liveness probe.
+
+By default the coordinator listens on `http://0.0.0.0:8024`, so the full
+URLs are:
+
+- `http://localhost:8024/nlip`
+- `http://localhost:8024/health`
+
+### Agent Servers
+
+Each agent server also exposes `/nlip` and `/health`, but the usual way
+to talk to them is via the coordinator and its tools.
+
+Within a single process (via `MountSpec`) they are mounted on `mem://`
+URLs so the coordinator can talk to them without opening extra ports:
+
+- Basic: `mem://basic/nlip`
+- Translate: `mem://translate/nlip`
+- Image: `mem://image/nlip`
+- Text: `mem://text/nlip` (used by `text_server`)
+
+The mapping from logical names to URLs is in `app.system.config.MOUNT_URLS`.
+
+---
+
+## NLIP Message Format
+
+The backend is designed around the `NLIP_Message` shape from the
+`nlip_sdk.nlip` package. At a high level, an NLIP message carries a list
+of sub‑messages, each describing one piece of content with a format and
+label.
+
+Each sub‑message is a JSON object with:
+
+- `format` (string) – mime‑like hint for the content. Common values:
+  - `text/plain` – plain text user messages
+  - `image/base64` – base64‑encoded image payloads
+  - `audio` – audio submessages used by the sound agent
+- `content` (string or object) – payload (text, base64, or nested dict).
+- `label` (string) – semantic tag such as:
+  - `translation:<locale>` – a translation into `<locale>`
+  - `analysis:<locale>` – analysis/observation text in `<locale>`
+  - task tags like `task.translate.*` or `task.text.*`
+
+A typical payload (abridged) looks like:
+
+```json
 {
-"messagetype": "request",
-"format": "generic",
-"subformat": "task.translate.fr",
-"label": "translate_req",
-"content": "hello world"
+  "messages": [
+    { "format": "text/plain", "content": "How are my crops?", "label": "user" },
+    { "format": "image/base64", "content": "<raw-base64>", "label": "image" },
+    { "format": "text/plain", "content": "How are my crops? (en)", "label": "translation:en" },
+    { "format": "text/plain", "content": "Leaf rust detected (en)", "label": "analysis:en" }
+  ]
 }
+```
 
-### Response:
+Agents and tests expect the above conventions when matching and
+producing messages. If you change the format or labeling scheme, you’ll
+need to update consumers and tests accordingly.
 
-{
-"messagetype": "response",
-"format": "generic",
-"subformat": "nlip.bundle",
-"content": "ok",
-"label": "translate_req",
-"submessages": [
-{
-"format": "text",
-"subformat": "english",
-"content": "bonjour le monde",
-"label": "translate_req"
-}
-]
-}
+---
 
-### Request with Multiple SubMessages
+## Agents and Flows
 
-{
-"messagetype": "request",
-"format": "generic",
-"subformat": "nlip.bundle",
-"content": "batch",
-"submessages": [
-{
-"format": "generic",
-"subformat": "task.translate.*",
-"label": "line1",
-"content": "tests de détection automatique"
-},
-{
-"format": "generic",
-"subformat": "task.translate.es",
-"label": "line2",
-"content": "Testing english to specific language"
-}
-]
-}
+### Coordinator NLIP Agent
 
-### Bundled Response
+Defined in `app.agents.coordinator_nlip_agent.CoordinatorNlipAgent`.
 
-#### Configuration
+- Maintains a registry of connected NLIP servers (`sessions`).
+- Tools:
+  - `connect_to_server(url)` – create an `NlipAsyncClient` for `<url>/nlip` and store it.
+  - `send_to_server(url, message)` – send a text message over NLIP and return the extracted text.
+  - `get_all_capabilities()` – ask each connected server “What are your NLIP Capabilities?” and aggregate responses.
+- When asked about its own capabilities (“What are your NLIP
+  Capabilities?”), it must call `get_all_capabilities()` first, then
+  summarize the reported capabilities from each server.
 
-The translation agent reads the following environment variables (all optional):
+The coordinator server in `app.servers.coordinator_server` wraps this
+agent in a `SessionManager` and exposes it over HTTP.
 
-- `OLLAMA_URL`: Base URL for the Ollama server (default `http://localhost:11434`).
-- `OLLAMA_MODEL`: Actual model the Agents are running on (default `llama3.2:3b`)
-- `NLIP_TRANSLATION_PIVOT_LOCALE`: Language used for internal reasoning (default `en`).
-- `NLIP_TRANSLATION_DEFAULT_LOCALE`: Locale assumed when detection fails (default `en`).
+### Translation Agent
 
-The translation agent targets the `llama3.1` model by default; pass `model="..."` when constructing `OllamaTranslationAgent` if you need to pick a different model.
+Defined in `app.agents.translation.TranslationNlipAgent`.
 
-### Image flow
+- Backed by `googletrans.Translator` to perform translations.
+- Exposes a single tool:
 
-Images can be included in the same NLIP `process` payload as other messages. Each image message should be a message object with:
+  ```python
+  async def get_translation(text: str, target_locale: str) -> str | None
+  ```
 
-- format: `image/base64`
-- content: the raw base64 image bytes (no data URI prefix)
-- label: optional client label (server will add analysis/translation labels)
+- Intended to handle NLIP messages tagged with translation tasks, such as
+  `subformat: "task.translate.*"`.
+- On success, returns localized text; on error, returns `None` and logs
+  the error.
 
-When the backend receives an image message it:
+The `translate_server` module wires this agent into an NLIP server that
+accepts `NLIP_Message` instances on `/nlip` and returns translated texts.
 
-1. Preserves the session correlator token with the message.
-2. Forwards the image base64 to the configured image recognition agent (LlavaImageRecognitionAgent) which POSTs to the Ollama image endpoint.
-3. Receives an English analysis result (pivot locale) from the agent and appends it as an internal message labeled `analysis:<pivot_locale>` (pivot locale defaults to `en`).
-4. Translates the analysis text back into the user's locale and returns it as a `analysis:<user_locale>` message.
-5. Returns the full message list to the client, preserving correlator tokens on responses.
+### Text Agent
 
-Note: the image agent expects plain base64 image data and uses the same HTTP/timeouts pattern as other agents (httpx, 60s default).
+Defined in `app.agents.textAgent.LLamaTextAgent`.
 
-### Intended message format
+- Talks to a local Ollama instance:
+  - `OLLAMA_URL` (default `http://localhost:11434`)
+  - `OLLAMA_TEXT_MODEL` (default `llama3.2:3b`)
+- `handle(NLIP_Message)`:
+  - Extracts relevant text from the NLIP message if:
+    - `format == AllowedFormats.text`, or
+    - `format == AllowedFormats.generic` and `subformat` starts with `task.text`.
+  - Sends a prompt to Ollama’s `POST /api/generate` endpoint.
+  - Wraps the model’s response as a new text NLIP message with label `llama_response`.
 
-The NLIP protocol uses a simple messages list. Each message is a JSON object with these fields:
+`app.servers.text_server` exposes this as an NLIP HTTP server.
 
-- `format` (string): mime-like hint for the content. Common values:
-  - `text/plain` — plain text user messages
-  - `image/base64` — base64-encoded image payloads
-- `content` (string): message payload (text or base64)
-- `label` (string): semantic tag such as:
-  - `translation:<locale>` — a translation into <locale>
-  - `analysis:<locale>` — an analyzed/observed result in <locale>
+### Image Recognition Agent
 
-Example payload shape (abridged):
-{
-"messages": [
-{ "format": "text/plain", "content": "How are my crops?", "label": "user" },
-{ "format": "image/base64", "content": "<raw-base64>", "label": "image" },
-{ "format": "text/plain", "content": "How are my crops? (en)", "label": "translation:en" },
-{ "format": "text/plain", "content": "Leaf rust detected (en)", "label": "analysis:en" },
-{ "format": "text/plain", "content": "Kurundi imewe (lg)", "label": "analysis:lg" }
-]
-}
+Defined in `app.agents.imageRecognition.ImageRecognitionNlipAgent`.
 
-Service guarantees:
+- Uses Ollama’s image endpoint (`/api/generate`) with an image‑capable
+  model (default `OLLAMA_IMAGE_MODEL="llava"`).
+- Tool:
 
-- The backend will attach translation/analysis labels and keep the pivot (default `en`) for internal reasoning.
-- Session correlator tokens are preserved on forwarded and returned messages so clients can correlate responses.
-- Tests and agents expect the `messages` list and the labeling conventions above; changing these requires updating tests and consumers.
+  ```python
+  async def recognize_image(encodedImage: str, prompt: Optional[str] = None) -> Optional[str]
+  ```
 
-## Audio / Sound Agent
+- Takes base64‑encoded image bytes (`encodedImage`) and an optional
+  textual prompt, returns an English description string or `None` on error.
 
-Incoming NLIP audio submessages are routed to Whisper for ASR and then optionally
-re-translated through Ollama so the final response matches the user's locale.
+`app.servers.image_server` wraps this agent for `/nlip` access.
 
-Environment variables for the sound agent (all optional):
+### Audio / Sound Agent
 
-- `WHISPER_URL`: Base URL for the Whisper HTTP server (default `http://localhost:9002`).
-- `WHISPER_MODEL`: Model name sent to Whisper (default `large-v3`).
-- `WHISPER_TIMEOUT`: Seconds to wait for Whisper before failing (default `90`).
+Defined in `app.agents.sound.SoundAgent`.
 
-### Local Whisper Server (openai-whisper)
+- Converts NLIP audio submessages into localized text via:
+  1. Whisper HTTP server for ASR.
+  2. Optional translation through a translation helper (see the
+     translation agent / tests for expected behavior).
+- Main configuration (all optional):
+  - `WHISPER_URL` – base URL for the Whisper server (default `http://localhost:9002`).
+  - `WHISPER_MODEL` – model name (`large-v3` by default).
+  - `WHISPER_TIMEOUT` – seconds to wait for Whisper (default `90`).
+- Input: one or more submessages with `format: "audio"` and nested
+  content describing base64 or raw bytes.
+- Output: a structure containing the final text, chosen language, and
+  metadata about per‑sample segments.
 
-Instead of relying on the `whisper.cpp` Docker image, we now reuse the official
-openai-whisper package directly. The helper script `start-whisper.sh` wraps a
-small FastAPI server (`backend/scripts/whisper_server.py`) that mimics
-OpenAI's `POST /v1/audio/transcriptions` endpoint.
+The sound agent is currently used directly by tests and is not wired as
+its own FastAPI server in `app.servers`, but it follows the same NLIP
+message conventions.
 
-1. **Install the Python package and system dependencies**
+---
+
+## Local Whisper Server (openai‑whisper)
+
+The sound agent expects an HTTP server that implements an
+OpenAI‑compatible transcription endpoint at `/v1/audio/transcriptions`.
+
+This repository includes a small FastAPI wrapper (`backend/scripts/whisper_server.py`)
+and a helper script `start-whisper.sh` that uses the official
+`openai-whisper` package.
+
+1. **Install system + Python dependencies**
 
    - Install ffmpeg (required by Whisper):
 
@@ -174,11 +278,10 @@ OpenAI's `POST /v1/audio/transcriptions` endpoint.
      ```
 
    - Install the Python deps (includes `openai-whisper` and PyTorch):
+
      ```bash
      pip install -r backend/requirements.txt
      ```
-     (If you prefer managing dependencies manually, run `pip install -U openai-whisper`
-     as described in the official Whisper README.)
 
 2. **Start the local Whisper server** (run from the `backend/` directory)
 
@@ -188,34 +291,41 @@ OpenAI's `POST /v1/audio/transcriptions` endpoint.
 
    Flags:
 
-   - `--model`: any model supported by Whisper (`tiny`, `base`, `small`, `medium`,
-     `large`, `large-v2`, `large-v3`, or `turbo`). Prefixes like `whisper-large-v3`
-     are also accepted for compatibility with existing configs.
+   - `--model`: any model supported by Whisper (`tiny`, `base`, `small`, `medium`, `large`, `large-v2`, `large-v3`, or `turbo`).
    - `--device`: optional torch device override (e.g. `--device cuda`).
    - `--port`: HTTP port to bind (default `9002`).
 
-3. **Smoke-test the endpoint**
+3. **Smoke‑test the endpoint**
+
    ```bash
    curl -X POST http://localhost:9002/v1/audio/transcriptions \
      -F "model=large-v3" \
      -F "audio=@backend/tests/speed-talking.wav"
    ```
+
    You should receive JSON containing the transcript, language, and segments.
 
-Leave the server running in the background while you exercise the backend—the
-sound agent simply issues HTTP requests against `WHISPER_URL`.
+Leave the server running while you exercise the backend; the sound agent
+uses `WHISPER_URL` to reach it.
 
-### Running Locally
+---
 
-1. **Install dependencies**
+## Running Locally
 
-   ```bash
-   cd backend
-   python -m venv .venv && source .venv/bin/activate
-   pip install -r requirements.txt
-   ```
+### 1. Install dependencies
 
-2. **Start Ollama for translation**
+From the repository root:
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+### 2. Start Ollama for text/image agents (optional but recommended)
+
+If you want the text and image agents to use local models via Ollama:
 
    ```bash
    ollama serve &
@@ -232,58 +342,71 @@ sound agent simply issues HTTP requests against `WHISPER_URL`.
 
    Leave this process running on `http://localhost:9002`.
 
-4. **Run the FastAPI app**
+### 4. Run the multi‑agent backend
 
-   ```bash
-   uvicorn backend.app.supervisor:app --reload --port 8000
-   ```
+The current multi‑agent setup is started via `app.system.main`:
 
-   Relevant environment variables:
+```bash
+cd backend
+python -m app.system.main
+```
 
-   - `OLLAMA_URL`, `NLIP_TRANSLATION_PIVOT_LOCALE`, `NLIP_TRANSLATION_DEFAULT_LOCALE`
-   - `WHISPER_URL`, `WHISPER_MODEL`, `WHISPER_TIMEOUT`
+This will:
 
-5. **Exercise the NLIP endpoint**
+- Start the coordinator server on `http://0.0.0.0:8024` (HTTP `/nlip` and `/health`).
+- Register the basic, translate, image, and text agents as in‑process `mem://` endpoints.
 
-   ```bash
-   curl -X POST http://localhost:8000/nlip/ \
-     -H "Content-Type: application/json" \
-     -d '{ "format": "text", "content": "hola", "target_language": "en" }'
-   ```
+### 5. Exercise the NLIP endpoint
 
-   For audio payloads, base64-encode the media into an `audio` submessage and post the same way.
+Send an NLIP JSON payload to the coordinator:
 
-6. **Run the test suite**
-   ```bash
-   pytest backend/tests
-   ```
-   The unit tests stub Whisper/Ollama, so they pass without the external services, but integration tests (marked `@pytest.mark.integration`) expect live servers.
+```bash
+curl -X POST http://localhost:8024/nlip \
+  -H "Content-Type: application/json" \
+  -d '{ "format": "text", "content": "hola", "label": "task.translate.es" }'
+```
 
-### Running via Docker Compose
+Or construct full NLIP messages using the `nlip_sdk` Python package and
+post their JSON representation.
 
-1. **Start the stack**
+For image or audio flows, include `image/base64` or `audio` submessages
+in the NLIP payload as described above.
 
-   ```bash
-   docker compose up --build
-   ```
+### 6. Run the tests
 
-2. **Launch Whisper in a separate terminal on the host**
+From the repository root (or `backend/`):
 
-   ```bash
-   bash start-whisper.sh
-   ```
+```bash
+pytest backend/tests
+```
 
-   Leave that terminal open; the container keeps running until you `Ctrl+C`.
+- Unit tests stub out external services so they can run without Whisper
+  or Ollama.
+- Integration tests are marked with `@pytest.mark.integration` and
+  expect live external services (Ollama, Whisper). Some translation‑related
+  tests target the older Ollama‑based translation helper; keep that in
+  mind if you modify the translation agent.
 
-3. **Point the backend container at the host-side Whisper server**
+---
 
-   - Set `WHISPER_URL=http://host.docker.internal:9002` in your Compose env.
-   - On Linux, add `extra_hosts: ["host.docker.internal:host-gateway"]` so the container can resolve the host gateway.
+## Legacy (Deprecated) Stack
 
-4. **Test sound agent with given WAV of someone talking**
-   ```bash
-   curl -X POST http://localhost:9002/v1/audio/transcriptions \
-     -F "model=large-v3" \
-     -F "audio=@backend/tests/speed-talking.wav"
-   ```
-   When you see a transcript, post the same file inside an NLIP request to the compose-hosted backend to exercise the full ASR → translation path.
+The `app/deprecated/` tree contains the original NLIP supervisor
+implementation that exposed a single FastAPI app with:
+
+- `POST /nlip` – session‑aware NLIP endpoint.
+- `GET /health` – health check.
+
+Key files there:
+
+- `supervisor.py` – translation + image flow, including English pivot logic.
+- `api.py` – `NLIP_Application` / `NLIP_Session` abstractions and FastAPI setup.
+- `routes/nlip.py` and `routes/health.py` – route handlers for NLIP and health.
+
+This stack previously used an Ollama‑based `OllamaTranslationAgent` and
+`LlavaImageRecognitionAgent`. Parts of that design are now implemented
+separately in the new agent modules. The deprecated code is kept for
+reference and for tests that still target the older behavior, but the
+recommended entrypoint going forward is the coordinator‑based
+multi‑agent stack described above.
+

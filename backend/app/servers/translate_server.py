@@ -5,12 +5,12 @@ from nlip_sdk.nlip import NLIP_Factory, NLIP_Message
 from ..agents.translation import TranslationNlipAgent
 from ..http_server.nlip_session_server import SessionManager, NlipSessionServer
 import uvicorn
+from app._logging import logger
 
 CAP_QUERY_PHRASES = {
     "describe your nlip capabilities.",
     "what are your nlip capabilities?",
 }
-
 
 def _capabilities_text(agent: TranslationNlipAgent) -> str:
     capabilities = [
@@ -45,12 +45,14 @@ class TranslationManager(SessionManager):
 
         try:
             results = await self.myAgent.process_query(text)
+            logger.info(f"TranslationServerResults: {results}")
             clean = _clean_outputs(results)
             resp = NLIP_Factory.create_text(clean[0])
             for res in clean[1:]:
                 resp.add_text(res)
             return resp
         except Exception as e:
+            logger.error(f"Exception: {e}")
             error_msg = f"Exception: {e}"
             return NLIP_Factory.create_text(error_msg)
         

@@ -34,15 +34,14 @@ class SoundSessionManager(SessionManager):
 
     async def process_nlip(self, msg: NLIP_Message) -> NLIP_Message:
         text = msg.extract_text()
-        if not text:
-            return NLIP_Factory.create_text("Sound agent expects textual content.")
 
-        normalized = text.strip().lower()
-        if normalized in CAP_QUERY_PHRASES:
-            return NLIP_Factory.create_text(_capabilities_text(self.agent))
+        if text:
+            normalized = text.strip().lower()
+            if normalized in CAP_QUERY_PHRASES:
+                return NLIP_Factory.create_text(_capabilities_text(self.agent))
 
         try:
-            raw_results = await self.agent.process_query(text)
+            raw_results = await self.agent.process_nlip(msg)
         except Exception as exc:  # pragma: no cover - defensive logging
             return NLIP_Factory.create_text(f"Error processing sound request: {exc}")
 
