@@ -1,18 +1,18 @@
 from app._logging import logger
-import asyncio
 import json
-import litellm
 from litellm import completion
 from pydantic import TypeAdapter
 import time
 from typing import Any, Dict, List, Optional, cast, Callable
 from dotenv import load_dotenv
+from app.system.config import MODELS
 
 #litellm._turn_on_debug() #pyright: ignore
 load_dotenv()
 #MODEL = "openai/gpt-4o-mini"
 #MODEL = "ollama_chat/llama3.2:3b"
-MODEL = "cerebras/llama3.3-70b"
+# MODEL = "cerebras/llama3.3-70b"
+MODEL = MODELS.get('base_model', 'cerebras/llama3.3-70b')
 
 # PROMPTS
 TOOLS_INSTRUCTIONS = """
@@ -117,6 +117,8 @@ class Agent:
 
 
     async def _drive_llm(self) -> list[str]:
+        logger.info(f"[{self.name}] Driving LLM with {len(self.messages)} messages and {len(self.tools)} tools")
+        logger.info(f"[{self.name}] Messages: {self.messages}")
         response = cast(Any, completion(model=self.model, messages=self.messages, tools=self.tools))
         response_msg = response.choices[0].message
         if response_msg is None:

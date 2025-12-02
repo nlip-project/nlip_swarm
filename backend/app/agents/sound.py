@@ -12,6 +12,7 @@ import httpx
 
 from .nlip_agent import NlipAgent
 from .base import MODEL
+from app.system.config import MODELS
 from .translation import get_translation
 
 
@@ -20,7 +21,7 @@ logger = logging.getLogger("NLIP")
 
 WHISPER_URL = os.getenv("WHISPER_URL", "http://localhost:9002").rstrip("/")
 WHISPER_ENDPOINT = os.getenv("WHISPER_ENDPOINT", "/v1/audio/transcriptions")
-WHISPER_MODEL = os.getenv("WHISPER_MODEL", "large-v3")
+WHISPER_MODEL = MODELS.get('audio_model', 'large-v3')
 WHISPER_TIMEOUT = float(os.getenv("WHISPER_TIMEOUT", "90.0"))
 
 

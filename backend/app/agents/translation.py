@@ -1,17 +1,16 @@
-import os
-import asyncio
 import logging
-from typing import Optional, Any
+from typing import Optional
 
 from googletrans import Translator
 
 from .nlip_agent import NlipAgent
+from app.system.config import MODELS
 
 logger = logging.getLogger("NLIP")
 
 #MODEL="openai/o4-mini"
 #MODEL="ollama_chat/llama3.2:3b"
-MODEL = "cerebras/llama3.3-70b"
+MODEL = MODELS.get('translation_model', 'cerebras/llama3.3-70b')
 
 
 # TOOL DEFINITION

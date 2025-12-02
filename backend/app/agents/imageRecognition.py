@@ -3,21 +3,20 @@
 from __future__ import annotations
 
 import base64
-import asyncio
 import os
 from typing import Optional
 
 import httpx
 
 from .nlip_agent import NlipAgent
+from app.system.config import MODELS
 from .base import MODEL
-MODEL = "cerebras/llama3.3-70b"
 
 from app._logging import logger
 
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
-OLLAMA_IMAGE_MODEL = os.getenv("OLLAMA_IMAGE_MODEL", "llava")
+OLLAMA_IMAGE_MODEL = MODELS.get('image_recognition_model', 'llava')
 OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "60.0"))
 
 

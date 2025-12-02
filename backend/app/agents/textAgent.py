@@ -3,18 +3,17 @@
 from __future__ import annotations
 
 import logging
-import os
 from typing import Optional, Any, cast
 
 from litellm import acompletion
 
 from .nlip_agent import NlipAgent
+from app.system.config import MODELS
 from .base import MODEL
 
 logger = logging.getLogger("NLIP")
 
-
-TEXT_TOOL_MODEL = os.getenv("TEXT_TOOL_MODEL", MODEL)
+TEXT_TOOL_MODEL = MODELS.get('text_tool_model', 'cerebras/llama3.3-70b')
 TEXT_TOOL_SYSTEM = (
     "You are an NLIP text assistant. Provide concise yet complete answers, cite facts when "
     "possible, and clearly note if critical information is missing."

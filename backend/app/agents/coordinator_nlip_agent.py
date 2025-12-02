@@ -13,24 +13,23 @@ AGENT:Name\n
 CAP1:desc, CAP2:desc, ...
 """
 
-import asyncio
-import logging
 from typing import Optional, Any, Dict
 from urllib.parse import urlparse
-import httpx
-import json
+from app._logging import logger
 
 from nlip_sdk.nlip import NLIP_Factory, NLIP_Message
 from app.agents.nlip_agent import NlipAgent
 from app.http_client.nlip_async_client import NlipAsyncClient
 from app.agents.imageRecognition import describe_image
+from app.system.config import MODELS
 
 sessions = {}
-from app._logging import logger
+
 
 #MODEL = "openai/gpt-4o-mini"
 #MODEL = "ollama_chat/llama3.2:3b"
-MODEL = "cerebras/llama3.3-70b"
+# MODEL = "cerebras/llama3.3-70b"
+MODEL = MODELS.get('coordinator_model', 'cerebras/llama3.3-70b')
 
 
 async def connect_to_server(url: str):
