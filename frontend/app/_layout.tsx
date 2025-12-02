@@ -1,9 +1,10 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
-import React, { useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { Stack, useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import React, { useEffect } from 'react';
+import 'react-native-reanimated';
+import { navigate, setRouter } from '../lib/navigation';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
@@ -13,9 +14,32 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  const router = useRouter();
+  // expose router to navigation helper
+  setRouter(router);
 
   // Refresh stored user info from server on app start
   useEffect(() => {
+    // Install a global fetch wrapper that redirects to login on 401 responses.
+    const originalFetch = global.fetch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global as any).fetch = async (input: any, init?: any) => {
+      try {
+        const resp = await originalFetch(input, init);
+        if (resp && resp.status === 401) {
+          // clear stored user info
+          AsyncStorage.removeItem('user').catch(() => {});
+          try { if (typeof window !== 'undefined' && window.localStorage) window.localStorage.removeItem('user'); } catch {}
+          // redirect to login using central navigation helper
+          try { navigate('/login'); } catch {}
+        }
+        return resp;
+      } catch (e) {
+        // If fetch itself fails, rethrow so callers can handle it
+        throw e;
+      }
+    };
+
     let mounted = true;
     const API_BASE = (process?.env?.API_BASE as string) || 'http://0.0.0.0:8024';
     (async () => {
@@ -45,7 +69,11 @@ export default function RootLayout() {
         console.warn('Failed to refresh /me on startup', e);
       }
     })();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+      // restore original fetch
+      try { (global as any).fetch = originalFetch; } catch {}
+    };
   }, []);
 
   return (
