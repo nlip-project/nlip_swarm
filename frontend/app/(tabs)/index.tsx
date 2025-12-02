@@ -4,13 +4,14 @@ import { Drawout } from "@/components/ui/drawout";
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
-import { useEffect, useRef, useState } from "react";
 import { useRouter } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
+  Dimensions,
   FlatList,
   Image,
   Keyboard,
@@ -20,15 +21,14 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  Dimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import NLIPClient from "../nlipClient";
 import MessageRow from "../../components/MessageRow";
 import { formatFileSize } from "../../components/utils";
+import NLIPClient from "../nlipClient";
 
 export default function TabThreeScreen() {
-    const router = useRouter();
+  const router = useRouter();
   const theme = useColorScheme() ?? "light";
     // Redirect to login if user not present in storage
     useEffect(() => {
@@ -37,7 +37,7 @@ export default function TabThreeScreen() {
             try {
                 const u = await AsyncStorage.getItem('user');
                 if (mounted && !u) {
-                    try { router.replace('/login'); } catch { /* ignore */ }
+                    try { router.replace('/login' as any); } catch { /* ignore */ }
                 }
             } catch (e) {
                 console.warn('Failed to read user storage', e);
@@ -241,6 +241,43 @@ export default function TabThreeScreen() {
     }
   }
 
+  function formatReplyText(reply: unknown): string {
+    if (reply == null) return "";
+    if (typeof reply === "string") return reply;
+    if (typeof reply === "object") {
+      const r = reply as any;
+      if (r && typeof r.content === "string") {
+        let combined = r.content;
+        if (Array.isArray(r.submessages) && r.submessages.length > 0) {
+          const subTexts = r.submessages
+            .map((sm: any) => {
+              if (!sm) return "";
+              if (typeof sm.content === "string") return sm.content;
+              if (sm.content != null) {
+                try {
+                  return JSON.stringify(sm.content);
+                } catch {
+                  return String(sm.content);
+                }
+              }
+              return "";
+            })
+            .filter((t: string) => t.length > 0);
+          if (subTexts.length > 0) {
+            combined = [combined, ...subTexts].join("\n\n");
+          }
+        }
+        return combined;
+      }
+      try {
+        return JSON.stringify(reply);
+      } catch {
+        return String(reply);
+      }
+    }
+    return String(reply);
+  }
+
   function handleSend() {
     console.log("[handleSend] Called with text:", text);
     const trimmed = text.trim();
@@ -299,90 +336,25 @@ export default function TabThreeScreen() {
     })
       .then((reply) => {
         console.log("[handleSend] Received reply:", reply);
-        // Ensure we don't pass an object into Text children (React Native error).
-        let replyText: string;
-        if (reply == null) {
-          replyText = "";
-        } else if (typeof reply === "string") {
-          replyText = reply;
-        } else if (typeof reply === "object") {
-          // Prefer `content` property if present, and also include
-          // any submessage contents from an NLIP reply so the user
-          // can see secondary outputs (translations, extra texts, etc.).
-          const r = reply as any;
-          if (r && typeof r.content === "string") {
-            let combined = r.content;
-            if (Array.isArray(r.submessages) && r.submessages.length > 0) {
-              const subTexts = r.submessages
-                .map((sm: any) => {
-                  if (!sm) return "";
-                  if (typeof sm.content === "string") {
-                    return sm.content;
-                  }
-                  if (sm.content != null) {
-                    try {
-                      return JSON.stringify(sm.content);
-                    } catch {
-                      return String(sm.content);
-                    }
-                  }
-                  return "";
-                })
-                .filter((t: string) => t.length > 0);
-              if (subTexts.length > 0) {
-                combined = [combined, ...subTexts].join("\n\n");
-              }
-            }
-            replyText = combined;
-          } else {
-            try {
-              replyText = JSON.stringify(reply);
-            } catch {
-              replyText = String(reply);
+        // Persist conversation ID if backend created one
+        try {
+          if (reply && typeof reply === "object") {
+            const maybeId =
+              (reply as any).conversation_id ||
+              (reply as any).conversationId ||
+              (reply as any).conversation;
+            if (maybeId) {
+              const cid = String(maybeId);
+              AsyncStorage.setItem("current_conversation", cid).catch((e) =>
+                console.warn("[handleSend] Failed to persist conversation id", e)
+              );
             }
           }
-        } else {
-          replyText = String(reply);
+        } catch (e) {
+          console.warn("[handleSend] Error while persisting conversation id", e);
         }
-        // Send to backend with optional attachments
-        console.log('[handleSend] Sending to backend...', { trimmed, localImage, localFile, localFileName, localFileType });
-        setIsSending(true);
-        (async () => {
-            try {
-                const reply: any = await sendToBackend(trimmed, { imageUri: localImage, fileUri: localFile, fileName: localFileName, fileType: localFileType });
-                console.log('[handleSend] Received reply:', reply);
-                // If backend created a conversation for this request, persist its id locally
-                try {
-                    if (reply && typeof reply === 'object') {
-                        const maybeId = reply.conversation_id || (reply.conversationId as any) || reply.conversation;
-                        if (maybeId) {
-                            const cid = String(maybeId);
-                            AsyncStorage.setItem('current_conversation', cid).catch((e) => console.warn('[handleSend] Failed to persist conversation id', e));
-                        }
-                    }
-                } catch (e) {
-                    console.warn('[handleSend] Error while persisting conversation id', e);
-                }
-                let replyText: string;
-                if (reply == null) {
-                    replyText = '';
-                } else if (typeof reply === 'string') {
-                    replyText = reply;
-                } else if (typeof reply === 'object') {
-                    const r = reply as any;
-                    if (r && typeof r.content === 'string') {
-                        replyText = r.content;
-                    } else {
-                        try {
-                            replyText = JSON.stringify(reply);
-                        } catch {
-                            replyText = String(reply);
-                        }
-                    }
-                } else {
-                    replyText = String(reply);
-                }
 
+        const replyText = formatReplyText(reply);
         const replyMessage: Message = {
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           text: replyText,
