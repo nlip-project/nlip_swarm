@@ -16,9 +16,9 @@ CAP_QUERY_PHRASES = {
 
 def _capabilities_text(agent: ImageNlipAgent) -> str:
     capabilities = [
-        "IMAGE_DESCRIPTION:Describes images using the describe_image tool backed by a Llava-compatible endpoint.",
-        "PROMPT_GUIDANCE:Accepts optional prompts to steer the description.",
-        "DATA_URL_STRIPPING:Handles base64 payloads or data URLs for images.",
+        "IMAGE_DESCRIPTION:Describes images using Llava model|FORMATS:[binary]|SUBFORMATS:[image]",
+        "PROMPT_GUIDANCE:Accepts optional prompts|FORMATS:[text]",
+        "DATA_URL_STRIPPING:Handles base64 or data URLs",
     ]
     return f"AGENT:{agent.name}\n" + ", ".join(capabilities)
 
@@ -34,16 +34,15 @@ class ImageSessionManager(SessionManager):
 
     async def process_nlip(self, msg: NLIP_Message) -> NLIP_Message:
         text = msg.extract_text()
-        if not text:
-            return NLIP_Factory.create_text("Image agent expects textual content.")
 
-        normalized = text.strip().lower()
-        if normalized in CAP_QUERY_PHRASES:
-            return NLIP_Factory.create_text(_capabilities_text(self.agent))
+        if text:
+            normalized = text.strip().lower()
+            if normalized in CAP_QUERY_PHRASES:
+                return NLIP_Factory.create_text(_capabilities_text(self.agent))
 
         try:
-            raw_results = await self.agent.process_query(text)
-        except Exception as exc:  # pragma: no cover - defensive logging
+            raw_results = await self.agent.process_nlip(msg)
+        except Exception as exc:  # pragma: no cover
             return NLIP_Factory.create_text(f"Error processing image request: {exc}")
 
         results = _clean_outputs(raw_results)

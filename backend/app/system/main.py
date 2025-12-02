@@ -9,7 +9,9 @@ from app.servers.text_server import app as text
 from app.servers.sound_server import app as sound
 from app.servers.image_server import app as image
 from .mount_spec import MountSpec
+from .config import MOUNT_URLS
 from app._logging import log_to_console
+
 
 if __name__ == "__main__":
     log_to_console(logging.DEBUG)

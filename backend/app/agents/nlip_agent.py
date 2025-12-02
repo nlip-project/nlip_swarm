@@ -1,8 +1,12 @@
 import asyncio
 import logging
 from typing import Callable, Optional
-from .base import Agent
-from .base import MODEL
+from .base import Agent, MODEL
+
+
+#MODEL = "openai/gpt-4o-mini"
+#MODEL = "ollama_chat/llama3.2:3b"
+MODEL = "cerebras/llama3.3-70b"
 
 
 logger = logging.getLogger("NLIP")
@@ -15,6 +19,9 @@ NLIP is an acronym for "Natural Language Interaction Protocol."  The NLIP projec
 - User-Agent to Agent protocol
 
 An NLIP Agent, when defined, is given a system instruction that describes its unique capabilities.
+
+You may receive ORIGINAL_NLIP_JSON in system context.
+When forwarding to other NLIP servers, always pass the FULL original NLIP JSON, not just text.
 
 One of the first requests an NLIP Agent will be asked to fulfill is to describe its NLIP Capabilities.
 When you are asked to describe your NLIP Capabilities, you should respond with a response of the format:
@@ -32,7 +39,7 @@ class NlipAgent(Agent):
                  name: str,
                  model: str = MODEL,
                 instruction: Optional[str] = None,
-                tools: list[Callable] = []):
+                tools: Optional[list[Callable]] = None):
         super().__init__(name, model, NLIP_INSTRUCTION, tools)
 
         if instruction:

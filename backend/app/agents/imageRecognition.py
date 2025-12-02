@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import base64
-import logging
+import asyncio
 import os
 from typing import Optional
 
@@ -11,9 +11,11 @@ import httpx
 
 from .nlip_agent import NlipAgent
 from .base import MODEL
+#MODEL = "openai/gpt-4o-mini"
+#MODEL = "ollama_chat/llama3.2:3b"
+MODEL = "cerebras/llama3.3-70b"
 
-
-logger = logging.getLogger("NLIP")
+from app._logging import logger
 
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
@@ -34,7 +36,6 @@ async def describe_image(image_base64: str, prompt: Optional[str] = None) -> str
         image_base64: Base64 encoded image data or data URL.
         prompt: Optional guiding instruction for the caption.
     """
-
     clean_b64 = _strip_data_url(image_base64)
     try:
         base64.b64decode(clean_b64, validate=True)
@@ -83,5 +84,5 @@ class ImageNlipAgent(NlipAgent):
         super().__init__(name=name, model=model, instruction=instruction, tools=[describe_image])
 
         self.add_instruction(
-            "You can help users understand images by calling the `describe_image` tool."
+            "You can help users understand images by calling the `describe_image` tool. "
         )
