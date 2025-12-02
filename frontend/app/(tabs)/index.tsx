@@ -88,11 +88,7 @@ export default function TabThreeScreen() {
   };
   const [messages, setMessages] = useState<Message[]>([]);
   const listRef = useRef<FlatList<Message>>(null);
-
-  const drawoutPosition = {
-    top: (insets.top || 0) + 20,
-    left: 12,
-  };
+  const topSpacerHeight = (insets.top || 0) + 12;
 
   const API_BASE = process.env.EXPO_PUBLIC_API_BASE;
   if (!API_BASE || API_BASE.trim().length === 0) {
@@ -442,25 +438,47 @@ export default function TabThreeScreen() {
           {/* Top spacer to avoid notch/camera area on newer iPhones (e.g. iPhone 16 Pro) */}
           <View
             pointerEvents='none'
-            style={[styles.topSpacer, { height: (insets.top || 0) + 12 }]}
+            style={[styles.topSpacer, { height: topSpacerHeight }]}
           />
-          {currentConversation ? (
-            <View
-              style={[styles.conversationHeader, { borderColor: c.icon }]}
-              accessibilityLabel='Current conversation summary'
-            >
-              <ThemedText style={[styles.conversationTitle, { color: c.text }]}>
-                {currentConversation.title?.trim() || 'Untitled conversation'}
-              </ThemedText>
-              <ThemedText style={[styles.conversationSubtitle, { color: c.icon }]}>
-                {`ID: ${currentConversation.id}`}
-              </ThemedText>
-            </View>
-          ) : null}
           <Drawout
-            triggerPosition={drawoutPosition}
             clearChat={clearChat}
             apiBase={API_BASE}
+            renderTrigger={({ toggle }) => (
+              <View
+                style={[
+                  styles.conversationHeaderRow,
+                  { borderColor: currentConversation ? c.icon : 'transparent' },
+                  !currentConversation ? styles.conversationHeaderRowEmpty : null,
+                ]}
+                accessibilityLabel={currentConversation ? 'Current conversation summary' : 'Conversation drawer'}
+              >
+                <TouchableOpacity
+                  onPress={toggle}
+                  accessibilityLabel="Open conversation drawer"
+                  style={styles.headerHamburger}
+                  activeOpacity={0.8}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <View style={[styles.headerHamburgerLine, { backgroundColor: c.icon }]} />
+                  <View style={[styles.headerHamburgerLine, { backgroundColor: c.icon }]} />
+                  <View style={[styles.headerHamburgerLine, { backgroundColor: c.icon }]} />
+                </TouchableOpacity>
+                <View style={styles.conversationHeaderText}>
+                  {currentConversation ? (
+                    <>
+                      <ThemedText style={[styles.conversationTitle, { color: c.text }]}>
+                        {currentConversation.title?.trim() || 'Untitled conversation'}
+                      </ThemedText>
+                      <ThemedText style={[styles.conversationSubtitle, { color: c.icon }]}>
+                        {`ID: ${currentConversation.id}`}
+                      </ThemedText>
+                    </>
+                  ) : (
+                    <></>
+                  )}
+                </View>
+              </View>
+            )}
             onSelectConversation={async (conversation) => {
               if (!conversation) {
                 clearChat();
@@ -657,12 +675,21 @@ const styles = StyleSheet.create({
     fontSize: 22,
     lineHeight: 22,
   },
-  conversationHeader: {
+  conversationHeaderRow: {
     width: '100%',
-    paddingLeft: 64,
-    paddingRight: 16,
-    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderBottomWidth: 1,
+    gap: 12,
+  },
+  conversationHeaderRowEmpty: {
+    borderBottomWidth: 0,
+    paddingBottom: 4,
+  },
+  conversationHeaderText: {
+    flex: 1,
   },
   conversationTitle: {
     fontSize: 18,
@@ -671,6 +698,20 @@ const styles = StyleSheet.create({
   conversationSubtitle: {
     fontSize: 12,
     marginTop: 4,
+  },
+  headerHamburger: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  headerHamburgerLine: {
+    width: 24,
+    height: 3,
+    borderRadius: 2,
+    marginVertical: 2,
   },
   textInput: {
     flex: 1,
