@@ -6,13 +6,14 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
   StyleSheet,
   TextInput,
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -27,6 +28,9 @@ export default function ProfileScreen() {
   const theme = useColorScheme() ?? 'light';
   const c = Colors[theme];
   const API_BASE = (process?.env?.API_BASE as string) || 'http://0.0.0.0:8024';
+  const insets = useSafeAreaInsets();
+  const headerOffset = Math.min(Math.max(insets.top + 8, 12), 48);
+  const bottomInset = insets.bottom + 32;
 
   const [name, setName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -242,34 +246,39 @@ export default function ProfileScreen() {
       <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
         <SafeAreaView style={[styles.flex1, { backgroundColor: c.background }]} edges={["top", "bottom"]}>
           <ThemedView style={styles.container}>
-            <View style={styles.header}>
-              <TouchableOpacity style={[styles.avatar, { borderColor: c.icon }]} onPress={handleChangePhoto} accessibilityLabel="Change profile photo">
-                {avatarUri ? (
-                  <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
-                ) : (() => {
-                  const initials = name
-                    .split(' ')
-                    .map(part => part.charAt(0))
-                    .filter(Boolean)
-                    .join('')
-                    .toUpperCase();
-                  return initials ? (
-                    <ThemedText style={[styles.avatarInitials]}>{initials}</ThemedText>
-                  ) : (
-                    <Ionicons name="person" size={56} color={c.icon} />
-                  );
-                })()}
-              </TouchableOpacity>
-              <TouchableOpacity onPress={handleChangePhoto}>
-                <ThemedText type="link">Change Photo</ThemedText>
-              </TouchableOpacity>
-            </View>
+            <ScrollView
+              contentContainerStyle={[
+                styles.scrollContent,
+                { paddingBottom: bottomInset, paddingTop: headerOffset },
+              ]}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.header}>
+                <TouchableOpacity style={[styles.avatar, { borderColor: c.icon }]} onPress={handleChangePhoto} accessibilityLabel="Change profile photo">
+                  {avatarUri ? (
+                    <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+                  ) : (() => {
+                    const initials = name
+                      .split(' ')
+                      .map(part => part.charAt(0))
+                      .filter(Boolean)
+                      .join('')
+                      .toUpperCase();
+                    return initials ? (
+                      <ThemedText style={[styles.avatarInitials]}>{initials}</ThemedText>
+                    ) : (
+                      <Ionicons name="person" size={56} color={c.icon} />
+                    );
+                  })()}
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleChangePhoto}>
+                  <ThemedText type="link">Change Photo</ThemedText>
+                </TouchableOpacity>
+              </View>
 
-            {/* spacer for top area (logout moved to actions at bottom) */}
-            <View style={{ height: 8 }} />
-
-            <View style={styles.form}>
-              <View style={styles.fieldGroup}>
+              <View style={styles.form}>
+                <View style={styles.fieldGroup}>
                 <ThemedText>Name</ThemedText>
                 <TextInput
                   value={name}
@@ -337,15 +346,16 @@ export default function ProfileScreen() {
                   returnKeyType="done"
                 />
               </View>
-              <View style={styles.actionsContainer}>
-                <TouchableOpacity onPress={handleSave} style={[styles.primaryButton, { backgroundColor: c.tint }]} accessibilityLabel="Save profile">
-                  <ThemedText style={styles.primaryButtonText}>Save</ThemedText>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={handleLogout} style={styles.destructiveButton} accessibilityLabel="Log out">
-                  <ThemedText style={styles.destructiveButtonText}>Log out</ThemedText>
-                </TouchableOpacity>
+                <View style={styles.actionsContainer}>
+                  <TouchableOpacity onPress={handleSave} style={[styles.primaryButton, { backgroundColor: c.tint }]} accessibilityLabel="Save profile">
+                    <ThemedText style={styles.primaryButtonText}>Save</ThemedText>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={handleLogout} style={styles.destructiveButton} accessibilityLabel="Log out">
+                    <ThemedText style={styles.destructiveButtonText}>Log out</ThemedText>
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
+            </ScrollView>
           </ThemedView>
         </SafeAreaView>
       </TouchableWithoutFeedback>
@@ -361,6 +371,10 @@ const styles = StyleSheet.create({
     paddingTop: 0,
     gap: 24,
     justifyContent: 'flex-start',
+  },
+  scrollContent: {
+    flexGrow: 1,
+    gap: 20,
   },
   header: {
     alignItems: 'center',
@@ -385,7 +399,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   form: {
-    gap: 16,
+    gap: 12,
   },
   fieldGroup: {
     gap: 6,
@@ -422,7 +436,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   actionsContainer: {
-    marginTop: 12,
+    marginTop: 8,
     alignItems: 'center',
     width: '100%',
     gap: 8,
