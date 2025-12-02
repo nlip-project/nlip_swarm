@@ -1,18 +1,18 @@
+import { ThemedText } from "@/components/themed-text";
+import { Colors } from "@/constants/theme";
 import React, { ReactNode, useEffect, useMemo, useState } from "react";
 import {
-  View,
+  Alert,
+  Animated,
+  Button,
+  Dimensions,
+  LayoutChangeEvent,
+  Pressable,
+  ScrollView,
   StyleSheet,
   TouchableOpacity,
-  Animated,
-  Dimensions,
-  Pressable,
-  Button,
-  Alert,
-  ScrollView,
-  LayoutChangeEvent,
+  View,
 } from "react-native";
-import { Colors } from "@/constants/theme";
-import { ThemedText } from "@/components/themed-text";
 
 type ConversationSummary = { id: string; title?: string | null; last_activity_at?: string | null };
 
@@ -23,6 +23,7 @@ type DrawoutProps = {
   apiBase?: string;
   onTriggerLayout?: (layout: { width: number; height: number }) => void;
   renderTrigger?: (args: { open: boolean; toggle: () => void }) => ReactNode;
+  onOpenChange?: (open: boolean) => void;
 };
 
 export function Drawout({
@@ -32,8 +33,10 @@ export function Drawout({
   apiBase,
   onTriggerLayout,
   renderTrigger,
+  onOpenChange,
 }: DrawoutProps) {
   const [open, setOpen] = useState(false);
+  const [layerVisible, setLayerVisible] = useState(false);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const screenWidth = Dimensions.get("window").width;
@@ -46,12 +49,18 @@ export function Drawout({
   }, [apiBase]);
 
   useEffect(() => {
+    if (open) setLayerVisible(true);
+
     const animation = Animated.timing(slideAnim, {
       toValue: open ? 0 : -panelWidth,
       duration: 260,
       useNativeDriver: true,
     });
-    animation.start();
+    animation.start(({ finished }) => {
+      if (!open && finished) {
+        setLayerVisible(false);
+      }
+    });
 
     let canceled = false;
     if (open) {
@@ -79,6 +88,10 @@ export function Drawout({
       animation.stop();
     };
   }, [open, panelWidth, resolvedApiBase, slideAnim]);
+
+  useEffect(() => {
+    onOpenChange?.(open);
+  }, [open, onOpenChange]);
 
   function startNewConversation() {
     setOpen(false);
@@ -128,72 +141,73 @@ export function Drawout({
   return (
     <>
       {renderTrigger ? renderTrigger({ open, toggle: toggleOpen }) : renderDefaultTrigger()}
-      <View style={StyleSheet.absoluteFill} pointerEvents={open ? "auto" : "none"}>
-        {open ? (
-          <Pressable
-            style={styles.overlay}
-            onPress={() => setOpen(false)}
-            accessibilityLabel="Close drawout panel"
-          />
-        ) : null}
-        <Animated.View
-          style={[
-            styles.panel,
-            {
-              width: panelWidth,
-              transform: [{ translateX: slideAnim }],
-              shadowOpacity: open ? 0.18 : 0,
-            },
-          ]}
-          pointerEvents={open ? "auto" : "none"}
-        >
-          <View style={styles.panelContent}>
-            <ScrollView style={{ marginTop: 12, flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }}>
-              {!loading && conversations.length === 0 ? (
-                <View style={{ paddingVertical: 8 }}>
-                  <ThemedText>No conversations</ThemedText>
-                </View>
-              ) : null}
-              {conversations.map((c) => (
-                <View key={c.id} style={styles.convoRowRow}>
-                  <TouchableOpacity
-                    style={styles.convoRowTouchable}
-                    onPress={() => {
-                      setOpen(false);
-                      onSelectConversation?.({ id: c.id, title: c.title ?? null });
-                    }}
-                    accessibilityLabel={`Open conversation ${c.title ?? c.id}`}
-                  >
+      {layerVisible ? (
+        <View style={styles.absoluteLayer} pointerEvents="auto">
+          <View style={styles.layerRow} pointerEvents="auto">
+            <Animated.View
+              style={[
+                styles.panel,
+                {
+                  width: panelWidth,
+                  transform: [{ translateX: slideAnim }],
+                  shadowOpacity: open ? 0.18 : 0,
+                },
+              ]}
+            >
+              <View style={styles.panelContent}>
+                <ScrollView style={{ marginTop: 12, flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }}>
+                  {!loading && conversations.length === 0 ? (
                     <View style={{ paddingVertical: 8 }}>
-                      <ThemedText>{c.title ?? `Conversation ${c.id.slice(0, 6)}`}</ThemedText>
-                      {c.last_activity_at ? (
-                        <ThemedText style={{ fontSize: 12, color: Colors.light.icon }}>
-                          {new Date(c.last_activity_at).toLocaleString()}
-                        </ThemedText>
-                      ) : null}
+                      <ThemedText>No conversations</ThemedText>
                     </View>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.archiveButton}
-                    onPress={() => void archiveConversation(c.id)}
-                    accessibilityLabel={`Archive conversation ${c.title ?? c.id}`}
-                  >
-                    <ThemedText style={styles.archiveButtonText}>Archive</ThemedText>
-                  </TouchableOpacity>
+                  ) : null}
+                  {conversations.map((c) => (
+                    <View key={c.id} style={styles.convoRowRow}>
+                      <TouchableOpacity
+                        style={styles.convoRowTouchable}
+                        onPress={() => {
+                          setOpen(false);
+                          onSelectConversation?.({ id: c.id, title: c.title ?? null });
+                        }}
+                        accessibilityLabel={`Open conversation ${c.title ?? c.id}`}
+                      >
+                        <View style={{ paddingVertical: 8 }}>
+                          <ThemedText>{c.title ?? `Conversation ${c.id.slice(0, 6)}`}</ThemedText>
+                          {c.last_activity_at ? (
+                            <ThemedText style={{ fontSize: 12, color: Colors.light.icon }}>
+                              {new Date(c.last_activity_at).toLocaleString()}
+                            </ThemedText>
+                          ) : null}
+                        </View>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.archiveButton}
+                        onPress={() => void archiveConversation(c.id)}
+                        accessibilityLabel={`Archive conversation ${c.title ?? c.id}`}
+                      >
+                        <ThemedText style={styles.archiveButtonText}>Archive</ThemedText>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  {loading ? (
+                    <View style={{ paddingVertical: 8 }}>
+                      <Button title="Loading..." onPress={() => {}} />
+                    </View>
+                  ) : null}
+                </ScrollView>
+                <View style={styles.footerContainer} pointerEvents="box-none">
+                  <Button title="New Conversation" onPress={startNewConversation} />
                 </View>
-              ))}
-              {loading ? (
-                <View style={{ paddingVertical: 8 }}>
-                  <Button title="Loading..." onPress={() => {}} />
-                </View>
-              ) : null}
-            </ScrollView>
-            <View style={styles.footerContainer} pointerEvents="box-none">
-              <Button title="New Conversation" onPress={startNewConversation} />
-            </View>
+              </View>
+            </Animated.View>
+            <Pressable
+              style={styles.dismissRegion}
+              onPress={() => setOpen(false)}
+              accessibilityLabel="Close drawout panel"
+            />
           </View>
-        </Animated.View>
-      </View>
+        </View>
+      ) : null}
     </>
   );
 }
@@ -223,15 +237,7 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     marginVertical: 2,
   },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.18)",
-  },
   panel: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    bottom: 0,
     backgroundColor: Colors.light.background,
     borderTopRightRadius: 18,
     borderBottomRightRadius: 18,
@@ -243,7 +249,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 2, height: 0 },
     shadowRadius: 12,
     elevation: 8,
-    zIndex: 1200,
   },
   panelContent: {
     padding: 8,
@@ -275,5 +280,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 12,
     backgroundColor: "transparent",
+  },
+  absoluteLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 999,
+  },
+  layerRow: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "stretch",
+    height: "100%",
+  },
+  dismissRegion: {
+    flex: 1,
+    backgroundColor: "transparent",
+    height: "100%",
   },
 });
