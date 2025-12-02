@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, cast, Callable
 from dotenv import load_dotenv
 from app.system.config import MODELS
 
-#litellm._turn_on_debug() #pyright: ignore
+litellm._turn_on_debug() #pyright: ignore
 load_dotenv()
 #MODEL = "openai/gpt-4o-mini"
 #MODEL = "ollama_chat/llama3.2:3b"
@@ -93,7 +93,13 @@ class Agent:
             args["message"] = self._last_nlip_json
 
         logger.info(f"[{self.name}] Tool Call: {name}({args})")
-        result = await fn(**args)
+
+        try:
+            result = await fn(**args)
+        except Exception as exc:
+            logger.exception(f"[{self.name}] Tool '{name}' raised: {exc}")
+            result = f"Error in tool '{name}': {exc}"
+
         content = result if isinstance(result, str) else json.dumps(result)
         logger.debug(f"[{self.name}] Tool '{name}' returned: {content[:200]}{'...' if len(str(content)) > 200 else ''}")
         self.messages.append(
@@ -107,13 +113,54 @@ class Agent:
         self.final_text.append(str(result))
         return True
     
+    def _to_primitive(self, value: Any) -> Any:
+        """
+        Convert pydantic/BaseModel objects (and any nested collections)
+        to plain Python types so they can be JSON-serialized.
+        """
+        if value is None:
+            return None
+        if hasattr(value, "model_dump_json"):
+            try:
+                return json.loads(cast(Any, value).model_dump_json())
+            except Exception:
+                pass
+        if hasattr(value, "model_dump"):
+            try:
+                return cast(Any, value).model_dump()
+            except Exception:
+                pass
+        if isinstance(value, dict):
+            return {k: self._to_primitive(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple, set)):
+            return [self._to_primitive(v) for v in value]
+        return value
+
+    def _serialize_assistant(self, response: Any) -> Dict[str, Any]:
+        """
+        Normalize assistant responses (with or without tool calls) into the
+        wire format expected by OpenAI-style chat models.
+        """
+        if isinstance(response, dict):
+            return cast(Dict[str, Any], self._to_primitive(response))
+
+        msg: Dict[str, Any] = {
+            "role": getattr(response, "role", None) or "assistant",
+        }
+
+        if hasattr(response, "content"):
+            msg["content"] = self._to_primitive(getattr(response, "content"))
+
+        tool_calls = getattr(response, "tool_calls", None)
+        if tool_calls:
+            msg["tool_calls"] = [self._to_primitive(tc) for tc in tool_calls]
+        return cast(Dict[str, Any], self._to_primitive(msg))
+
     def _handle_response(self, response: Any):
         if getattr(response, "content", None):
             self.final_text.append(response.content)
-        if getattr(response, "tool_calls", None):
-            self.messages.append(response.model_dump())
-        else:
-            self.messages.append(response)
+
+        self.messages.append(self._serialize_assistant(response))
 
 
     async def _drive_llm(self) -> list[str]:

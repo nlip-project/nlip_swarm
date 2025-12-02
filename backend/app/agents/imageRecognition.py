@@ -33,8 +33,6 @@ async def describe_image(image_base64: str, prompt: Optional[str] = None) -> str
         image_base64: Base64 encoded image data or data URL.
         prompt: Optional guiding instruction for the caption.
     """
-    logger.info(f"describe_image called with image_base64 length: {len(image_base64) if image_base64 else 0}, prompt: {prompt}")
-
     clean_b64 = _strip_data_url(image_base64)
     try:
         base64.b64decode(clean_b64, validate=True)
