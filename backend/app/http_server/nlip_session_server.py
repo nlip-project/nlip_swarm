@@ -12,6 +12,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
 from app.auth.db import init_db, create_user, get_user_by_email, verify_password, get_user_by_id, update_user
+from fastapi.middleware.cors import CORSMiddleware
 
 logger = logging.getLogger("NLIP")
 
@@ -42,6 +43,15 @@ class NlipSessionServer(FastAPI):
         self.sessions: Dict[str, SessionManager] = {}
 
         app = self
+
+        app.add_middleware(
+            CORSMiddleware, # expo mobile doesn't work, web does
+            allow_origins=["http://localhost:8081", "http://localhost:8024", "exp://f4mf8ts-anonymous-8081.exp.direct"],
+            # allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
         @app.post("/nlip")
         async def process_nlip_request(

@@ -20,6 +20,7 @@ services:
       - OLLAMA_MODEL=qwen2.5:7b
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
         # Pass your OpenAI key through; set OPENAI_API_KEY in your shell before compose up
+      - CEREBRAS_API_KEY=${CEREBRAS_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
       - db

@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError
 
 DATABASE_URL = os.getenv(
-    "DATABASE_URL")
+    "DATABASE_URL", "postgresql+asyncpg://postgres:postgres@db:5432/nlip_db")
 
 engine = create_async_engine(DATABASE_URL, future=True, echo=False)
 AsyncSessionLocal = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
@@ -40,6 +40,7 @@ async def init_db(retries: int = 5, initial_delay: float = 1.0) -> None:
     last_exc = None
     for attempt in range(1, retries + 1):
         try:
+            print(DATABASE_URL)
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
             logger.info("Database tables created or already exist.")

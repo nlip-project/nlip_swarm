@@ -44,6 +44,7 @@ export function Drawout({
   const slideAnim = useState(new Animated.Value(-panelWidth))[0];
 
   const resolvedApiBase = useMemo(() => {
+    // const origin = apiBase ?? process?.env?.EXPO_PUBLIC_API_BASE ?? (global as any)?.API_BASE ?? "http://localhost:8024";
     const origin = apiBase ?? process?.env?.EXPO_PUBLIC_API_BASE ?? (global as any)?.API_BASE ?? "http://0.0.0.0:8024";
     return origin.replace(/\/$/, "");
   }, [apiBase]);

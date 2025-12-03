@@ -27,6 +27,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const theme = useColorScheme() ?? 'light';
   const c = Colors[theme];
+  // const API_BASE = (process?.env?.API_BASE as string) || 'http://localhost:8024';
   const API_BASE = (process?.env?.API_BASE as string) || 'http://0.0.0.0:8024';
   const insets = useSafeAreaInsets();
   const headerOffset = Math.min(Math.max(insets.top + 8, 12), 48);
@@ -195,13 +196,7 @@ export default function ProfileScreen() {
 
   async function handleLogout() {
     Keyboard.dismiss();
-    Alert.alert('Log out', 'Are you sure you want to log out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Log out',
-        style: 'destructive',
-        onPress: async () => {
-          // First try to notify the backend to invalidate the session / clear cookie
+          console.log('logging out');
           try {
             await fetch(`${API_BASE}/logout`, {
               method: 'POST',
@@ -232,9 +227,10 @@ export default function ProfileScreen() {
           } catch {
             console.warn('Navigation error on logout');
           }
-        },
-      },
-    ]);
+      
+    // ]
+
+
   }
 
   return (

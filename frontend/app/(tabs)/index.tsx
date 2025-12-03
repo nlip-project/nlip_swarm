@@ -90,7 +90,7 @@ export default function TabThreeScreen() {
   const listRef = useRef<FlatList<Message>>(null);
   const topSpacerHeight = (insets.top || 0) + 12;
 
-  const API_BASE = process.env.EXPO_PUBLIC_API_BASE;
+  const API_BASE = process.env.EXPO_PUBLIC_API_BASE ?? "http://localhost:8024";
   if (!API_BASE || API_BASE.trim().length === 0) {
     throw new Error('EXPO_PUBLIC_API_BASE is not set. Please set it to the backend server URL which is proably looks like "http://localhost:8024"');
   }

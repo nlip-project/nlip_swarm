@@ -42,6 +42,7 @@ export default function RootLayout() {
     };
 
     let mounted = true;
+    // const API_BASE = (process?.env?.API_BASE as string) || 'http://localhost:8024';
     const API_BASE = (process?.env?.API_BASE as string) || 'http://0.0.0.0:8024';
     (async () => {
       try {

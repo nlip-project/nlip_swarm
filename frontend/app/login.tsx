@@ -7,6 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
 
+// const API_BASE = (process?.env?.API_BASE as string) || 'http://localhost:8024';
 const API_BASE = (process?.env?.API_BASE as string) || 'http://0.0.0.0:8024';
 
 export default function Login() {
