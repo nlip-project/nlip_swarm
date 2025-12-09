@@ -15,15 +15,18 @@ export const unstable_settings = {
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const router = useRouter();
-  // expose router to navigation helper
-  setRouter(router);
+  useEffect(() => {
+    setRouter(router);
+  }, [router]);
 
   // Refresh stored user info from server on app start
   useEffect(() => {
     // Install a global fetch wrapper that redirects to login on 401 responses.
     const originalFetch = global.fetch;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (global as any).fetch = async (input: any, init?: any) => {
+    (global as typeof global & { fetch: typeof fetch }).fetch = async (
+      input: RequestInfo | URL,
+      init?: RequestInit
+    ) => {
       try {
         const resp = await originalFetch(input, init);
         if (resp && resp.status === 401) {
@@ -76,7 +79,9 @@ export default function RootLayout() {
     return () => {
       mounted = false;
       // restore original fetch
-      try { (global as any).fetch = originalFetch; } catch {}
+      try {
+        (global as typeof global & { fetch: typeof fetch }).fetch = originalFetch;
+      } catch {}
     };
   }, []);
 

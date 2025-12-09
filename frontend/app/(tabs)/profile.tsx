@@ -1,4 +1,3 @@
-import * as ImagePicker from 'expo-image-picker';
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
@@ -19,6 +18,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useImageAttachment } from '@/hooks/use-image-attachment';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
@@ -38,6 +38,22 @@ export default function ProfileScreen() {
   const [email, setEmail] = useState('');
   const [location, setLocation] = useState('');
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const { openCamera, pickImageFromLibrary } = useImageAttachment({
+    onImageSelected: setAvatarUri,
+    cameraOptions: {
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+      permissionMessage: 'Camera permission is required to take a profile photo.',
+    },
+    libraryOptions: {
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+      allowsMultipleSelection: false,
+      permissionMessage: 'Photo library permission is required to choose a profile photo.',
+    },
+  });
 
   function handleCountryCodeChange(text: string) {
     // Only allow digits
@@ -54,44 +70,6 @@ export default function ProfileScreen() {
     if (d.length <= 3) return `(${p1}`;
     if (d.length <= 6) return `(${p1}) ${p2}`;
     return `(${p1}) ${p2}-${p3}`;
-  }
-
-  async function openCamera() {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission required', 'Camera permission is required to take a profile photo.');
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      setAvatarUri(result.assets[0].uri);
-    }
-  }
-
-  async function pickImageFromLibrary() {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission required', 'Photo library permission is required to choose a profile photo.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-      allowsMultipleSelection: false,
-    });
-
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      setAvatarUri(result.assets[0].uri);
-    }
   }
 
   // Load user data from storage (AsyncStorage or window.localStorage) on mount
