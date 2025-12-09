@@ -4,6 +4,7 @@ import { MessageComposer } from "@/components/chat/MessageComposer";
 import { SelectedAttachment } from "@/components/chat/SelectedAttachment";
 import { ThemedView } from "@/components/themed-view";
 import { Drawout } from "@/components/ui/drawout";
+import { API_BASE } from "@/constants/env";
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useImageAttachment } from "@/hooks/use-image-attachment";
@@ -52,12 +53,6 @@ export default function TabThreeScreen() {
   const listRef = useRef<FlatList<Message>>(null);
   const topSpacerHeight = (insets.top || 0) + 12;
 
-  const API_BASE = process.env.EXPO_PUBLIC_API_BASE;
-  if (!API_BASE || API_BASE.trim().length === 0) {
-    throw new Error(
-      'EXPO_PUBLIC_API_BASE is not set. Please set it to the backend server URL which is proably looks like "http://localhost:8024"'
-    );
-  }
   const client = new NLIPClient(API_BASE, { timeout: 30000 });
 
   const { openCamera, pickImageFromLibrary } = useImageAttachment({

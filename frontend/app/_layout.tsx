@@ -1,12 +1,13 @@
+import { normalizeAvatarValue } from '@/lib/avatar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect } from 'react';
 import 'react-native-reanimated';
-import { normalizeAvatarValue } from '@/lib/avatar';
 import { navigate, setRouter } from '../lib/navigation';
 
+import { API_BASE } from '@/constants/env';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export const unstable_settings = {
@@ -46,10 +47,7 @@ export default function RootLayout() {
     };
 
     let mounted = true;
-    const API_BASE =
-      (process?.env?.EXPO_PUBLIC_API_BASE as string | undefined) ??
-      (process?.env?.API_BASE as string | undefined) ??
-      'http://0.0.0.0:8024';
+
     (async () => {
       try {
         const res = await fetch(`${API_BASE}/me`, { method: 'GET', credentials: 'include' });

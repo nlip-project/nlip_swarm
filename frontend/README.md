@@ -67,6 +67,4 @@ frontend/
 |---------------------------|---------|
 | `EXPO_PUBLIC_API_BASE`    | Fully qualified URL of the backend (e.g., `https://swarm.example.com`). Exposed to the client. |
 
-> Note: `process.env.API_BASE` is still supported as a fallback for older scripts, but Expo’s `EXPO_PUBLIC_*` naming allows bundler-time injection.
-
 For backend instructions or full-stack deployment (Docker Compose), refer to the root-level `README.md`.
