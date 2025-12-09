@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Image,
@@ -19,6 +19,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useImageAttachment } from '@/hooks/use-image-attachment';
+import { encodeUriToDataUri, normalizeAvatarValue } from '@/lib/avatar';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
@@ -27,7 +28,10 @@ export default function ProfileScreen() {
   const router = useRouter();
   const theme = useColorScheme() ?? 'light';
   const c = Colors[theme];
-  const API_BASE = (process?.env?.API_BASE as string) || 'http://0.0.0.0:8024';
+  const API_BASE =
+    (process?.env?.EXPO_PUBLIC_API_BASE as string | undefined) ??
+    (process?.env?.API_BASE as string | undefined) ??
+    'http://0.0.0.0:8024';
   const insets = useSafeAreaInsets();
   const headerOffset = Math.min(Math.max(insets.top + 8, 12), 48);
   const bottomInset = insets.bottom + 32;
@@ -37,9 +41,29 @@ export default function ProfileScreen() {
   const [countryCode, setCountryCode] = useState('');
   const [email, setEmail] = useState('');
   const [location, setLocation] = useState('');
-  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [avatarPreviewUri, setAvatarPreviewUri] = useState<string | null>(null);
+  const [avatarUploadDataUri, setAvatarUploadDataUri] = useState<string | null>(null);
+  const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
+
+  const prepareAvatarUpload = useCallback(async (uri: string) => {
+    setAvatarPreviewUri(uri);
+    setIsProcessingPhoto(true);
+    try {
+      const dataUri = await encodeUriToDataUri(uri);
+      setAvatarPreviewUri(dataUri);
+      setAvatarUploadDataUri(dataUri);
+    } catch (error) {
+      console.warn('Failed to encode avatar', error);
+      Alert.alert('Error', 'Failed to process the selected image. Please try again.');
+    } finally {
+      setIsProcessingPhoto(false);
+    }
+  }, []);
+
   const { openCamera, pickImageFromLibrary } = useImageAttachment({
-    onImageSelected: setAvatarUri,
+    onImageSelected: (uri) => {
+      void prepareAvatarUpload(uri);
+    },
     cameraOptions: {
       allowsEditing: true,
       aspect: [1, 1],
@@ -97,7 +121,7 @@ export default function ProfileScreen() {
           if (u?.name) setName(u.name);
           if (u?.phone_number) setPhoneNumber(formatPhoneNumber(String(u.phone_number).replace(/\D/g, '')));
           if (u?.country_code) setCountryCode(u.country_code);
-          if (u?.avatar_uri) setAvatarUri(u.avatar_uri);
+          if (u?.avatar_uri) setAvatarPreviewUri(normalizeAvatarValue(u.avatar_uri));
         }
       } catch (e) {
         console.warn('Failed to load user for profile', e);
@@ -117,13 +141,17 @@ export default function ProfileScreen() {
 
   async function handleSave() {
     Keyboard.dismiss();
+    if (isProcessingPhoto) {
+      Alert.alert('Please wait', 'Still processing the selected photo. Try again in a moment.');
+      return;
+    }
     const phoneDigits = phoneNumber ? phoneNumber.replace(/\D/g, '') : '';
     const payload = {
       name: name || undefined,
       location: location || undefined,
       phone_number: phoneDigits || undefined,
       country_code: countryCode || undefined,
-      avatar_uri: avatarUri || undefined,
+      avatar_uri: avatarUploadDataUri || undefined,
     };
 
     try {
@@ -158,8 +186,11 @@ export default function ProfileScreen() {
         location: data.location ?? location ?? null,
         phone_number: data.phone_number ? formatPhoneNumber(String(data.phone_number).replace(/\D/g, '')) : (phoneNumber ?? null),
         country_code: data.country_code ?? (countryCode || null),
-        avatar_uri: data.avatar_uri ?? avatarUri ?? null,
+        avatar_uri: normalizeAvatarValue(data.avatar_uri ?? existing?.avatar_uri ?? avatarPreviewUri ?? null),
       };
+
+      setAvatarPreviewUri(userObj.avatar_uri);
+      setAvatarUploadDataUri(null);
 
       try { await AsyncStorage.setItem('user', JSON.stringify(userObj)); } catch (e) { console.warn('Failed to persist user (AsyncStorage)', e); }
       try { if (typeof window !== 'undefined' && window.localStorage) window.localStorage.setItem('user', JSON.stringify(userObj)); } catch { /* ignore */ }
@@ -234,8 +265,8 @@ export default function ProfileScreen() {
             >
               <View style={styles.header}>
                 <TouchableOpacity style={[styles.avatar, { borderColor: c.icon }]} onPress={handleChangePhoto} accessibilityLabel="Change profile photo">
-                  {avatarUri ? (
-                    <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+                  {avatarPreviewUri ? (
+                    <Image source={{ uri: avatarPreviewUri }} style={styles.avatarImage} />
                   ) : (() => {
                     const initials = name
                       .split(' ')

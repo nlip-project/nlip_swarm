@@ -4,6 +4,7 @@ import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect } from 'react';
 import 'react-native-reanimated';
+import { normalizeAvatarValue } from '@/lib/avatar';
 import { navigate, setRouter } from '../lib/navigation';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -45,7 +46,10 @@ export default function RootLayout() {
     };
 
     let mounted = true;
-    const API_BASE = (process?.env?.API_BASE as string) || 'http://0.0.0.0:8024';
+    const API_BASE =
+      (process?.env?.EXPO_PUBLIC_API_BASE as string | undefined) ??
+      (process?.env?.API_BASE as string | undefined) ??
+      'http://0.0.0.0:8024';
     (async () => {
       try {
         const res = await fetch(`${API_BASE}/me`, { method: 'GET', credentials: 'include' });
@@ -59,7 +63,7 @@ export default function RootLayout() {
             location: data.location ?? null,
             phone_number: data.phone_number ?? null,
             country_code: data.country_code ?? null,
-            avatar_uri: data.avatar_uri ?? null,
+            avatar_uri: normalizeAvatarValue(data.avatar_uri ?? null),
             session_id: null,
           };
           try { await AsyncStorage.setItem('user', JSON.stringify(userObj)); } catch { /* ignore */ }
