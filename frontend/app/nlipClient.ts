@@ -2,7 +2,6 @@
 // Provides sendMessage and attachment helpers that wrap request/response handling to the /nlip/ endpoint
 
 import * as FileSystem from 'expo-file-system';
-import { Linking } from 'react-native';
 import { navigate } from '../lib/navigation';
 
 type NLIPSubmessage = {

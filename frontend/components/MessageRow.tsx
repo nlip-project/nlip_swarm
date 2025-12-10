@@ -4,18 +4,7 @@ import Markdown from 'react-native-markdown-display';
 import { Ionicons } from '@expo/vector-icons';
 import { ThemedText } from '@/components/themed-text';
 import { formatFileSize } from './utils';
-
-type Message = {
-  id: string;
-  text?: string;
-  imageUri?: string | null;
-  fileUri?: string | null;
-  fileName?: string | null;
-  fileSize?: number | null;
-  fileType?: string | null;
-  timestamp: number;
-  sender: 'me' | 'other';
-};
+import type { Message } from '@/types/chat';
 
 function MessageRow({ item, c }: { item: Message; c: any }) {
   return (

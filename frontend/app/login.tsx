@@ -1,18 +1,14 @@
-import React, { useState } from 'react';
-import { View, TextInput, Button, StyleSheet, Alert, TouchableOpacity } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors } from '@/constants/theme';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
-
-const API_BASE = (process?.env?.API_BASE as string) || 'http://0.0.0.0:8024';
+import { ThemedView } from '@/components/themed-view';
+import { API_BASE } from '@/constants/env';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Stack, useRouter } from 'expo-router';
+import React, { useState } from 'react';
+import { Alert, Button, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { fetchAndPersistUserProfile, persistUserLocally, StoredUser } from '@/lib/session';
 
 export default function Login() {
   const router = useRouter();
-  const theme = useColorScheme() ?? 'light';
-  const c = Colors[theme];
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -41,26 +37,19 @@ export default function Login() {
           console.warn('Failed to clear current conversation before login', e);
         }
         // Persist minimal user info locally so we can gate routes
-        const userObj = {
-          user_id: data.user_id,
-          session_id: data.session_id,
+        const baseUser: StoredUser = {
+          user_id: data.user_id ?? null,
+          session_id: data.session_id ?? null,
           name: data.name ?? null,
           email: data.email ?? email,
           location: data.location ?? null,
+          phone_number: null,
+          country_code: null,
+          avatar_uri: null,
         };
-        try {
-          await AsyncStorage.setItem('user', JSON.stringify(userObj));
-        } catch (e) {
-          console.warn('Failed to persist user data (AsyncStorage)', e);
-        }
-        // Also write to window.localStorage for web clients
-        try {
-          if (typeof window !== 'undefined' && window.localStorage) {
-            window.localStorage.setItem('user', JSON.stringify(userObj));
-          }
-        } catch (e) {
-          // ignore
-        }
+
+        await persistUserLocally(baseUser);
+        await fetchAndPersistUserProfile(baseUser);
         try { router.replace('/'); } catch { /* ignore */ }
       }
     } catch (err) {
