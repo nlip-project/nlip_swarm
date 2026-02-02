@@ -27,7 +27,6 @@ export default function ProfileScreen() {
   const router = useRouter();
   const theme = useColorScheme() ?? 'light';
   const c = Colors[theme];
-  // const API_BASE = (process?.env?.API_BASE as string) || 'http://localhost:8024';
   const API_BASE = (process?.env?.API_BASE as string) || 'http://0.0.0.0:8024';
   const insets = useSafeAreaInsets();
   const headerOffset = Math.min(Math.max(insets.top + 8, 12), 48);
@@ -194,44 +193,50 @@ export default function ProfileScreen() {
     }
   }
 
-  async function handleLogout() {
-    Keyboard.dismiss();
-          console.log('logging out');
-          try {
-            await fetch(`${API_BASE}/logout`, {
-              method: 'POST',
-              credentials: 'include',
-            });
-          } catch (e) {
-            // network error — proceed to clear client state anyway
-            console.warn('Logout request failed', e);
-          }
+async function handleLogout() {
+  Keyboard.dismiss();
+  Alert.alert('Log out', 'Are you sure you want to log out?', [
+    { text: 'Cancel', style: 'cancel' },
+    {
+      text: 'Log out',
+      style: 'destructive',
+      onPress: async () => {
+        // First try to notify the backend to invalidate the session / clear cookie
+        console.log('logging out');
+        try {
+          await fetch(`${API_BASE}/logout`, {
+            method: 'POST',
+            credentials: 'include',
+          });
+        } catch (e) {
+          // network error — proceed to clear client state anyway
+          console.warn('Logout request failed', e);
+        }
 
-          // Clear all client-side persisted state so next login starts clean
-          try {
-            await AsyncStorage.clear();
-          } catch (err) {
-            console.warn('Failed to clear AsyncStorage on logout', err);
+        // Clear all client-side persisted state so next login starts clean
+        try {
+          await AsyncStorage.clear();
+        } catch (err) {
+          console.warn('Failed to clear AsyncStorage on logout', err);
+        }
+        try {
+          if (typeof window !== 'undefined' && window.localStorage) {
+            window.localStorage.clear();
           }
-          try {
-            if (typeof window !== 'undefined' && window.localStorage) {
-              window.localStorage.clear();
-            }
-          } catch (err) {
-            console.warn('Failed to clear window.localStorage on logout', err);
-          }
+        } catch (err) {
+          console.warn('Failed to clear window.localStorage on logout', err);
+        }
 
-          // Navigate to login
-          try {
-            router.replace('/login');
-          } catch {
-            console.warn('Navigation error on logout');
-          }
-      
-    // ]
-
-
-  }
+        // Navigate to login
+        try {
+          router.replace('/login');
+        } catch {
+          console.warn('Navigation error on logout');
+        }
+      },
+    },
+  ]);
+}
 
   return (
     <KeyboardAvoidingView

@@ -44,15 +44,6 @@ class NlipSessionServer(FastAPI):
 
         app = self
 
-        app.add_middleware(
-            CORSMiddleware, # expo mobile doesn't work, web does
-            allow_origins=["http://localhost:8081", "http://localhost:8024", "exp://f4mf8ts-anonymous-8081.exp.direct"],
-            # allow_origins=["*"],
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
-
         @app.post("/nlip")
         async def process_nlip_request(
             message: Annotated[NLIP_Message, Body(examples=examples)],

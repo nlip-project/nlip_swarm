@@ -165,8 +165,6 @@ class Agent:
 
 
     async def _drive_llm(self) -> list[str]:
-        logger.info(f"[{self.name}] Driving LLM with {len(self.messages)} messages and {len(self.tools)} tools")
-        logger.info(f"[{self.name}] Messages: {self.messages}")
         response = cast(Any, completion(model=self.model, messages=self.messages, tools=self.tools))
         response_msg = response.choices[0].message
         if response_msg is None:
