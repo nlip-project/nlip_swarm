@@ -1,0 +1,13 @@
+[
+    {
+        "scheme": "mem",
+        "suffix": "ExampleAgentCookie",
+        "identifier": "example",
+        "agent": {
+            "name": "ExampleAgent",
+            "model": "exampleModel",
+            "instruction": "This is a test of the parsing system for the agente spec.",
+            "tools": []
+        }
+    }
+]
