@@ -30,5 +30,5 @@ EXPOSE 19000
 EXPOSE 19001
 EXPOSE 19002
 
-# Run the application.
-CMD ["npm", "start"]
+# Run the application without interactive prompts.
+CMD ["npm", "run", "start", "--", "--tunnel"]

@@ -92,11 +92,12 @@ nlip_swarm/
 ### Docker Compose (full stack)
 
 1. From the repository root, copy the sample environment files (`frontend/example.env`, `backend/app/example.env`) as needed.
-2. Start both services with Docker:
+2. Start the full stack with Docker:
    ```bash
    docker compose up --build
    ```
-3. Expo DevTools will be available on the forwarded port, and the backend API will expose NLIP endpoints as defined in the compose file.
+3. The coordinator API will be available at http://localhost:8024, and Expo DevTools will be available on the forwarded ports.
+4. If you are using Expo Go on a physical device, set `EXPO_PUBLIC_API_BASE` to your host LAN IP before running compose.
 
 ## Contributors
 

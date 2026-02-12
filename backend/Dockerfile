@@ -29,8 +29,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # Copy the source code into the container.
 COPY . .
 
-# Expose the port that the application listens on.
-EXPOSE 8000
+# Expose the default coordinator port (overridden per service in compose).
+EXPOSE 8024
 
 # Run the application.
 CMD ["python", "-m", "app.system.main"]

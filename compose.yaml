@@ -2,27 +2,118 @@ services:
   frontend:
     build:
       context: ./frontend
-    tty: true
-    stdin_open: true
+    environment:
+      EXPO_PUBLIC_API_BASE: ${EXPO_PUBLIC_API_BASE:-http://host.docker.internal:8024}
+      EXPO_DEVTOOLS_LISTEN_ADDRESS: 0.0.0.0
+      CI: "1"
+    command: ["npm", "run", "start", "--", "--tunnel"]
     ports:
       - 8081:8081
       - 19000:19000
       - 19001:19001
       - 19002:19002
-  backend:
+    depends_on:
+      - coordinator
+
+  coordinator:
     build:
       context: ./backend
+    command:
+      ["uvicorn", "app.servers.coordinator_server:app", "--host", "0.0.0.0", "--port", "8024"]
     ports:
-      # Backend listens on 8024; expose same port to host so mobile can reach it
       - 8024:8024
     environment:
-      - OLLAMA_URL=http://host.docker.internal:11434
-      - OLLAMA_MODEL=qwen2.5:7b
-      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
-        # Pass your OpenAI key through; set OPENAI_API_KEY in your shell before compose up
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      OLLAMA_URL: http://host.docker.internal:11434
+      OLLAMA_MODEL: qwen2.5:7b
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      NLIP_BASIC_URL: http://basic:8025
+      NLIP_TRANSLATE_URL: http://translate:8026
+      NLIP_TEXT_URL: http://text:8027
+      NLIP_IMAGE_URL: http://image:8028
+      NLIP_SOUND_URL: http://sound:8029
     depends_on:
       - db
+      - basic
+      - translate
+      - text
+      - image
+      - sound
+
+  basic:
+    build:
+      context: ./backend
+    command:
+      ["uvicorn", "app.servers.basic_server:app", "--host", "0.0.0.0", "--port", "8025"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
+    expose:
+      - 8025
+
+  translate:
+    build:
+      context: ./backend
+    command:
+      ["uvicorn", "app.servers.translate_server:app", "--host", "0.0.0.0", "--port", "8026"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
+    expose:
+      - 8026
+
+  text:
+    build:
+      context: ./backend
+    command:
+      ["uvicorn", "app.servers.text_server:app", "--host", "0.0.0.0", "--port", "8027"]
+    environment:
+      OLLAMA_URL: http://host.docker.internal:11434
+      OLLAMA_TEXT_MODEL: qwen2.5:7b
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
+    expose:
+      - 8027
+
+  image:
+    build:
+      context: ./backend
+    command:
+      ["uvicorn", "app.servers.image_server:app", "--host", "0.0.0.0", "--port", "8028"]
+    environment:
+      OLLAMA_URL: http://host.docker.internal:11434
+      OLLAMA_IMAGE_MODEL: llava
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
+    expose:
+      - 8028
+
+  sound:
+    build:
+      context: ./backend
+    command:
+      ["uvicorn", "app.servers.sound_server:app", "--host", "0.0.0.0", "--port", "8029"]
+    environment:
+      WHISPER_URL: http://whisper:9002
+      WHISPER_MODEL: ${WHISPER_MODEL:-large-v3}
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
+    expose:
+      - 8029
+    depends_on:
+      - whisper
+
+  whisper:
+    build:
+      context: ./backend
+    command:
+      [
+        "python",
+        "scripts/whisper_server.py",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "9002",
+        "--model",
+        "${WHISPER_MODEL:-large-v3}"
+      ]
+    expose:
+      - 9002
 
   db:
     image: postgres:15
