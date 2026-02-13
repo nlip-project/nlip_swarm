@@ -34,7 +34,7 @@ if __name__ == "__main__":
     
     path = Path(__file__).parent.parent.parent.joinpath(PATHS["json_path"], "agent_spec.json")
     mount_spec.extend(add_agents_from_spec(str(path)))
-    print(f"Mount spec: {mount_spec}")
+    # print(f"Mount spec: {mount_spec}")
     ms = MountSpec(mount_spec)
 
     try:

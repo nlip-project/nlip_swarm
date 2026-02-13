@@ -6,7 +6,7 @@ from uuid import uuid4
 import traceback
 import sys
 from contextlib import asynccontextmanager
-from nlip_sdk.nlip import NLIP_Message
+from nlip_sdk.nlip import NLIP_Message, NLIP_Factory
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -15,6 +15,11 @@ from app.auth.db import init_db, create_user, get_user_by_email, verify_password
 from fastapi.middleware.cors import CORSMiddleware
 
 logger = logging.getLogger("NLIP")
+
+CAP_QUERY_PHRASES = {
+    "describe your nlip capabilities.",
+    "what are your nlip capabilities?",
+}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -30,9 +35,29 @@ async def lifespan(app: FastAPI):
     finally:
         pass
 
-class SessionManager:
+class SessionManager: # Create a base SessionManager class that can be used for custom agents specified in JSON spec.
     async def process_nlip(self, msg: NLIP_Message) -> NLIP_Message:
-        raise NotImplementedError("process_nlip must be implemented by subclasses")
+        # raise NotImplementedError("process_nlip must be implemented by subclasses")
+        text = msg.extract_text()
+        if text:
+            normalized = text.strip().lower()
+            if normalized in CAP_QUERY_PHRASES:
+                return NLIP_Factory.create_text("Base Session Manager - no specific capabilities. This is a placeholder response.")
+        try:
+            raw_results = await self.agent.process_nlip(msg)
+        except Exception as exc:  # pragma: no cover - defensive logging
+            return NLIP_Factory.create_text(f"Error processing request: {exc}")
+
+        # Base session manager can handle generic text queries
+        # possibly figure out how to allow for entirely new agents and session managers to be specified in the JSON spec 
+        # Json spec only allows for existing agents and session managers to be added in different configurations
+        cleaned = [entry for entry in raw_results if entry and not entry.startswith("Calling tool:")]
+        results = cleaned or [""]  # ensure we return at least an empty string if all outputs were filtered out
+        response = NLIP_Factory.create_text(results[0])
+        for extra in results[1:]:
+            response.add_text(extra)
+        return response
+
     
 class NlipSessionServer(FastAPI):
     def __init__(self, suffix: str, session_manager_class):
