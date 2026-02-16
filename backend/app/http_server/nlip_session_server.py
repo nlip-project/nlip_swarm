@@ -12,7 +12,6 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
 from app.auth.db import init_db, create_user, get_user_by_email, verify_password, get_user_by_id, update_user
-from fastapi.middleware.cors import CORSMiddleware
 
 logger = logging.getLogger("NLIP")
 
@@ -38,11 +37,20 @@ async def lifespan(app: FastAPI):
 class SessionManager: # Create a base SessionManager class that can be used for custom agents specified in JSON spec.
     async def process_nlip(self, msg: NLIP_Message) -> NLIP_Message:
         # raise NotImplementedError("process_nlip must be implemented by subclasses")
-        text = msg.extract_text()
+        try:
+            text = msg.extract_text()
+        except Exception:
+            text = None
         if text:
             normalized = text.strip().lower()
             if normalized in CAP_QUERY_PHRASES:
-                return NLIP_Factory.create_text("Base Session Manager - no specific capabilities. This is a placeholder response.")
+                agent = getattr(self, "agent", None)
+                agent_name = getattr(agent, "name", "CustomAgent")
+                tool_names = sorted(getattr(agent, "fnmap", {}).keys())
+                capabilities = ["CUSTOM_AGENT:Config-driven NLIP agent loaded from agent_spec.json."]
+                if tool_names:
+                    capabilities.append(f"TOOLS:{'|'.join(tool_names)}")
+                return NLIP_Factory.create_text(f"AGENT:{agent_name}\n" + ", ".join(capabilities))
         try:
             raw_results = await self.agent.process_nlip(msg)
         except Exception as exc:  # pragma: no cover - defensive logging
