@@ -2,6 +2,8 @@ services:
   frontend:
     build:
       context: ./frontend
+    env_file:
+      - ./frontend/.env
     tty: true
     stdin_open: true
     ports:
@@ -12,6 +14,8 @@ services:
   backend:
     build:
       context: ./backend
+    env_file:
+      - ./backend/app/.env
     ports:
       # Backend listens on 8024; expose same port to host so mobile can reach it
       - 8024:8024
@@ -19,9 +23,9 @@ services:
       - OLLAMA_URL=http://host.docker.internal:11434
       - OLLAMA_MODEL=qwen2.5:7b
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
-        # Pass your OpenAI key through; set OPENAI_API_KEY in your shell before compose up
-      - CEREBRAS_API_KEY=${CEREBRAS_API_KEY}
+        # Pass your OpenAI/Cerebras API key through; set OPENAI_API_KEY in your shell before compose up or set it in a .env file
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CEREBRAS_API_KEY=${CEREBRAS_API_KEY}
     depends_on:
       - db
 
@@ -36,7 +40,8 @@ services:
       - db_data:/var/lib/postgresql/data
     ports:
       - 5432:5432
- 
+      # - 5433:5432 # Alternative port mapping if you want to access the DB from host
+
 volumes:
   db_data:
     name: db_data

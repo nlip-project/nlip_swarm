@@ -19,23 +19,32 @@ DEFAULT_AGENT_ENDPOINTS = [
     if name != "coord"
 ]
 
+ROOT_DIR = Path(__file__).resolve().parents[2]
+MODELS_INI_PATH = ROOT_DIR / "models.ini"
+
+DEFAULT_AGENT_MODELS = {
+    'base_model': 'cerebras/llama3.3-70b',
+    'coordinator_model': 'cerebras/llama3.3-70b',
+    'image_recognition_model': 'llava',
+    'audio_model': 'large-v3',
+    'text_tool_model': 'cerebras/llama3.3-70b',
+    'translation_model': 'cerebras/llama3.3-70b',
+}
+
+DEFAULT_PATHS = {
+    'json_path': './'
+}
+
 config = configparser.ConfigParser()
-if not Path(__file__).parent.parent.parent.joinpath('models.ini').exists():
-    config['AGENTS'] = {
-        'base_model': 'cerebras/llama3.3-70b',
-        'coordinator_model': 'cerebras/llama3.3-70b',
-        'image_recognition_model': 'llava',
-        'audio_model': 'large-v3',
-        'text_tool_model': 'cerebras/llama3.3-70b',
-        'translation_model': 'cerebras/llama3.3-70b',
-    }
-    config['PATHS'] = {
-        'json_path': './'
-    }
-
-    with open(Path(__file__).parent.parent.parent.joinpath('models.ini'), 'w') as configfile:
+if not MODELS_INI_PATH.exists():
+    config['AGENTS'] = DEFAULT_AGENT_MODELS
+    config['PATHS'] = DEFAULT_PATHS
+    with open(MODELS_INI_PATH, 'w') as configfile:
         config.write(configfile)
-config.read('models.ini')
-
+config.read(MODELS_INI_PATH)
+if 'AGENTS' not in config:
+    config['AGENTS'] = DEFAULT_AGENT_MODELS
+if 'PATHS' not in config:
+    config['PATHS'] = DEFAULT_PATHS
 MODELS = { name: model for name, model in config['AGENTS'].items() }
 PATHS = { name: path for name, path in config['PATHS'].items() }
