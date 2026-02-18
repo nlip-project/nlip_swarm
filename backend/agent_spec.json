@@ -3,10 +3,11 @@
         "scheme": "mem",
         "suffix": "ExampleAgentCookie",
         "identifier": "example",
+        "session_manager": "text",
         "agent": {
             "name": "ExampleAgent",
             "model": "exampleModel",
-            "instruction": "This is a test of the parsing system for the agente spec.",
+            "instruction": "This is a test of the parsing system for the agent spec.",
             "tools": []
         }
     }

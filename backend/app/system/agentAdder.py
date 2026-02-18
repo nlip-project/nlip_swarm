@@ -6,7 +6,7 @@
 #     "scheme": "url scheme to use for mounting the agent, e.g. mem or http",
 #     "suffix": "suffix to identify server, e.g. NLIPCoordinatorCookie
 #     "identifier": "if scheme is mem, this is the identifier for the in-memory server, if http, this is ip and port to bind to, e.g. 127.0.0.1:8000",
-#     "session_manager": "just use default one for now, not sure how to specify custom functions here"
+#     "session_manager": "can pick from predefined session managers with different capabilities. Custom session managers are not supported in this implementation as they would require code changes. Options are coordinator, image, text, translate, sound, or default.",
 #      "agent":
 #         {
 #           "name": "Name of Agent",
@@ -19,6 +19,14 @@ import json
 
 from app.agents.base import Agent
 from app.http_server.nlip_session_server import SessionManager as baseSessionManager, NlipSessionServer
+
+# New servers can be created via combinations of existing session managers and agents
+# Possibly allow custom session manager and agent code but not sure how to implement without direct code changes
+from app.servers.coordinator_server import NlipManager
+from app.servers.image_server import ImageSessionManager
+from app.servers.text_server import TextSessionManager
+from app.servers.translate_server import TranslationManager
+from app.servers.sound_server import SoundSessionManager
 def add_agents_from_spec(spec_json_file: str) -> list[tuple[NlipSessionServer, str]]:
     print(f"Adding agents from spec file: {spec_json_file}")
     custom_servers = []
@@ -30,6 +38,7 @@ def add_agents_from_spec(spec_json_file: str) -> list[tuple[NlipSessionServer, s
         scheme = server_spec.get("scheme")
         suffix = server_spec.get("suffix")
         identifier = server_spec.get("identifier")
+        session_manager_type = server_spec.get("session_manager", "default")
 
         # Define the URL based on the scheme and identifier
         if scheme == "mem":
@@ -39,10 +48,17 @@ def add_agents_from_spec(spec_json_file: str) -> list[tuple[NlipSessionServer, s
         else:
             raise ValueError(f"Unsupported scheme: {scheme}")
 
+        if session_manager_type == "default":
+            SessionManager = baseSessionManager
+        else: # For simplicity, we only allow choosing from predefined session managers. Custom session manager code would require code changes and is not supported in this implementation.
+            SessionManager = {
+                "coordinator": NlipManager,
+                "image": ImageSessionManager,
+                "text": TextSessionManager,
+                "translate": TranslationManager,
+                "sound": SoundSessionManager,
+            }.get(session_manager_type)
 
-        # For simplicity, we'll just use the default session manager for now, probably best to make a generic functional session manager that can be configured via the spec in the future
-        # then won't have to worry about custom session manager code in the backend, just specify the agent and tools in the spec and the coordinator will handle routing and tool calling
-        SessionManager = baseSessionManager
 
         # Parse agent specifications
         agent_spec = server_spec.get("agent", {})
