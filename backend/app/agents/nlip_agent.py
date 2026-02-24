@@ -3,12 +3,6 @@ import logging
 from typing import Callable, Optional
 from .base import Agent, MODEL
 
-
-#MODEL = "openai/gpt-4o-mini"
-#MODEL = "ollama_chat/llama3.2:3b"
-MODEL = "cerebras/llama3.3-70b"
-
-
 logger = logging.getLogger("NLIP")
 
 NLIP_INSTRUCTION = """

@@ -1,6 +1,7 @@
 from app._logging import logger
 import asyncio
 import json
+import os
 import litellm
 from litellm import completion
 from pydantic import TypeAdapter
@@ -12,7 +13,7 @@ litellm._turn_on_debug() #pyright: ignore
 load_dotenv()
 #MODEL = "openai/gpt-4o-mini"
 #MODEL = "ollama_chat/llama3.2:3b"
-MODEL = "cerebras/llama3.3-70b"
+MODEL = os.getenv("MODEL", "cerebras/llama3.3-70b")
 
 # PROMPTS
 TOOLS_INSTRUCTIONS = """

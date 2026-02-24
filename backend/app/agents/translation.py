@@ -6,13 +6,9 @@ from typing import Optional, Any
 from googletrans import Translator
 
 from .nlip_agent import NlipAgent
+MODEL = os.getenv("TRANSLATION_MODEL", "cerebras/llama3.3-70b")
 
 logger = logging.getLogger("NLIP")
-
-#MODEL="openai/o4-mini"
-#MODEL="ollama_chat/llama3.2:3b"
-MODEL = "cerebras/llama3.3-70b"
-
 
 # TOOL DEFINITION
 async def get_translation(text: str, target_locale: str) -> str | None:
