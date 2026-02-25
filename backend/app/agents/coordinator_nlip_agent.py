@@ -246,6 +246,8 @@ When the incoming NLIP message includes media/structured content (e.g., binary/i
 Tool calling rules:
 - Call at most ONE tool per turn. If multiple steps are needed (e.g., connect, then send), do them sequentially across turns.
 - Pass tool arguments as a JSON object with named keys, e.g., {"url": "...", "message": "..."}.
+- ONLY use URLs that were explicitly provided to you or discovered via get_all_capabilities. Never invent or guess external URLs.
+- Before fulfilling any user request that requires sending to a server, you MUST call get_all_capabilities first if you have not already done so in this session. Use the results to determine which server to route the request to.
 """
 
 class CoordinatorNlipAgent(NlipAgent):

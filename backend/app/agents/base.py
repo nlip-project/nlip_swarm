@@ -60,6 +60,7 @@ class Agent:
         self.tools: list[Dict] = []
         self.fnmap: Dict[str, Callable] = {}
         self.final_text: list[str] = []
+        self.tool_outputs: list[str] = []
         self._last_nlip_json: Optional[dict] = None
 
         for fn in (tools or []):
@@ -119,7 +120,7 @@ class Agent:
                 "content": content
             }
         )
-        self.final_text.append(str(result))
+        self.tool_outputs.append(str(result))
         return True
     
     def _to_primitive(self, value: Any) -> Any:
@@ -202,10 +203,11 @@ class Agent:
             self._handle_response(response_msg)
             tool_calls = list(getattr(response_msg, "tool_calls", None) or [])
 
-        return self.final_text
+        return self.final_text + self.tool_outputs[-1:]
 
     async def process_query(self, query: str) -> list[str]:
         self.final_text = []
+        self.tool_outputs = []
         self.messages.append({
             "role": "user",
             "content": query
@@ -214,6 +216,7 @@ class Agent:
     
     async def process_nlip(self, nlip_msg: Any) -> list[str]:
         self.final_text = []
+        self.tool_outputs = []
 
         try:
             nlip_json = nlip_msg.to_dict()
