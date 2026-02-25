@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from typing import Callable, Optional
-from .base import Agent, MODEL
+from .base import Agent, MODEL, API_BASE
 
 logger = logging.getLogger("NLIP")
 
@@ -34,7 +34,7 @@ class NlipAgent(Agent):
                  model: str = MODEL,
                 instruction: Optional[str] = None,
                 tools: Optional[list[Callable]] = None,
-                api_base: Optional[str] = None):
+                api_base: Optional[str] = API_BASE):
         super().__init__(name, model, NLIP_INSTRUCTION, tools, api_base=api_base)
 
         if instruction:

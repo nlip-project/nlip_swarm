@@ -49,5 +49,5 @@ models:
     model: ai/llama3.1:8B-Q4_K_M
     context_size: 4096
   translation:
-    model: ai/smollm2:360M-Q4_K_M
+    model: ai/llama3.1:8B-Q4_K_M
     context_size: 4096
