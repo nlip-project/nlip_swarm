@@ -46,8 +46,8 @@ volumes:
 
 models:
   llm:
-    model: ai/smollm2:360M-Q4_K_M
-    context_size: 2048
+    model: ai/llama3.1:8B-Q4_K_M
+    context_size: 4096
   translation:
-    model: ai/llama3.2:1B-Q4_0
-    context_size: 1024
+    model: ai/smollm2:360M-Q4_K_M
+    context_size: 4096

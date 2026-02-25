@@ -33,8 +33,9 @@ class NlipAgent(Agent):
                  name: str,
                  model: str = MODEL,
                 instruction: Optional[str] = None,
-                tools: Optional[list[Callable]] = None):
-        super().__init__(name, model, NLIP_INSTRUCTION, tools)
+                tools: Optional[list[Callable]] = None,
+                api_base: Optional[str] = None):
+        super().__init__(name, model, NLIP_INSTRUCTION, tools, api_base=api_base)
 
         if instruction:
             self.add_instruction(instruction)

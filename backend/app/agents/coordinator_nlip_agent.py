@@ -30,12 +30,19 @@ from app.agents.imageRecognition import describe_image
 sessions = {}
 from app._logging import logger
 
-#MODEL = "openai/gpt-4o-mini"
-#MODEL = "ollama_chat/llama3.2:3b"
-MODEL = os.getenv("COORDINATOR_MODEL", DEFAULT_MODEL)
+_OLLAMA_URL   = os.getenv("OLLAMA_URL")
+_OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
+
+if _OLLAMA_URL and _OLLAMA_MODEL:
+    MODEL    = f"openai/{_OLLAMA_MODEL}"
+    API_BASE = _OLLAMA_URL.rstrip("/")
+else:
+    MODEL    = DEFAULT_MODEL
+    API_BASE = None
 
 
 async def connect_to_server(url: str):
+    """Connect to an NLIP server at the given URL."""
     try:
         parsed_url = urlparse(str(url))
         scheme = parsed_url.scheme
@@ -58,6 +65,7 @@ async def connect_to_server(url: str):
     return f"Connected to {scheme}://{netloc}/"
 
 async def send_to_server(url: str, message: str) -> dict:
+    """Send a message to a connected NLIP server at the given URL and return the response."""
     parsed_url = urlparse(str(url))
     scheme = parsed_url.scheme
     netloc = parsed_url.netloc
@@ -246,10 +254,11 @@ class CoordinatorNlipAgent(NlipAgent):
         model: str = MODEL,
         instruction: Optional[str] = None,
         tools: Optional[list] = None,
+        api_base: Optional[str] = API_BASE,
     ):
         if tools is None:
             tools = [connect_to_server, send_to_server, get_all_capabilities]
-        super().__init__(name=name, model=model, tools=tools)
+        super().__init__(name=name, model=model, tools=tools, api_base=api_base)
 
         self.add_instruction("You are an agent with tools for querying other NLIP Agent Servers.")
         self.add_instruction(NLIP_COORDINATOR_PROMPT)

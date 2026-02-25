@@ -11,9 +11,16 @@ from dotenv import load_dotenv
 
 litellm._turn_on_debug() #pyright: ignore
 load_dotenv()
-#MODEL = "openai/gpt-4o-mini"
-#MODEL = "ollama_chat/llama3.2:3b"
-MODEL = os.getenv("MODEL", "cerebras/llama3.3-70b")
+
+_OLLAMA_URL   = os.getenv("OLLAMA_URL")
+_OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
+
+if _OLLAMA_URL and _OLLAMA_MODEL:
+    MODEL    = f"openai/{_OLLAMA_MODEL}"
+    API_BASE: Optional[str] = _OLLAMA_URL.rstrip("/")
+else:
+    MODEL    = "cerebras/llama3.3-70b"
+    API_BASE = None
 
 # PROMPTS
 TOOLS_INSTRUCTIONS = """
@@ -34,10 +41,11 @@ class Agent:
     - instruction (str): The system instructions
     - tools (list): the initial set of tools
     """
-    def __init__(self, name: str, model: str = MODEL, instruction: Optional[str] = None, tools: Optional[list[Callable]] = None):
+    def __init__(self, name: str, model: str = MODEL, instruction: Optional[str] = None, tools: Optional[list[Callable]] = None, api_base: Optional[str] = API_BASE):
         self.tstart = time.time()
         self.name: str = name
         self.model: str = model
+        self.api_base: Optional[str] = api_base
         self.instruction = instruction
         self.messages: List[Any] = [
             {
@@ -165,11 +173,16 @@ class Agent:
 
 
     async def _drive_llm(self) -> list[str]:
-        response = cast(Any, completion(model=self.model, messages=self.messages, tools=self.tools))
+        response = cast(Any, completion(
+            model=self.model,
+            messages=self.messages,
+            tools=self.tools,
+            api_base=self.api_base,
+        ))
         response_msg = response.choices[0].message
         if response_msg is None:
             raise RuntimeError("No Response from LLM")
-        
+
         self._handle_response(response_msg)
         tool_calls = list(getattr(response_msg, "tool_calls", None) or [])
 
@@ -179,7 +192,12 @@ class Agent:
                 tool_args = json.loads(tool_call.function.arguments or "{}")
                 await self._call_tool(tool_name, tool_args, tool_call.id)
 
-            response = cast(Any, completion(model=self.model, messages=self.messages, tools=self.tools))
+            response = cast(Any, completion(
+                model=self.model,
+                messages=self.messages,
+                tools=self.tools,
+                api_base=self.api_base,
+            ))
             response_msg = response.choices[0].message
             self._handle_response(response_msg)
             tool_calls = list(getattr(response_msg, "tool_calls", None) or [])
