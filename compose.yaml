@@ -24,16 +24,16 @@ services:
       ["uvicorn", "app.servers.coordinator_server:app", "--host", "0.0.0.0", "--port", "8024"]
     ports:
       - 8024:8024
+    models:
+      llm:
+        endpoint_var: OLLAMA_URL
+        model_var: OLLAMA_MODEL
+      translation:
+        endpoint_var: TRANSLATION_URL
+        model_var: TRANSLATION_MODEL
     environment:
-      OLLAMA_URL: http://host.docker.internal:11434
-      OLLAMA_MODEL: qwen2.5:7b
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      NLIP_BASIC_URL: http://basic:8025
-      NLIP_TRANSLATE_URL: http://translate:8026
-      NLIP_TEXT_URL: http://text:8027
-      NLIP_IMAGE_URL: http://image:8028
-      NLIP_SOUND_URL: http://sound:8029
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-dockermodelrunner}
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
     depends_on:
       - db
       - basic
@@ -132,3 +132,11 @@ services:
 volumes:
   db_data:
     name: db_data
+
+models:
+  llm:
+    model: ai/llama3.1:8B-Q4_K_M
+    context_size: 2048
+  translation:
+    model: ai/llama3.2:3B-Q4_0
+    context_size: 1024
