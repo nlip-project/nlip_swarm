@@ -1,33 +1,34 @@
-import * as ImagePicker from 'expo-image-picker';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
-  Image,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
-  TextInput,
-  TouchableOpacity,
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ThemedText } from '@/components/themed-text';
+import { AvatarPicker } from '@/components/profile/AvatarPicker';
+import { PhoneField } from '@/components/profile/PhoneField';
+import { ProfileActions } from '@/components/profile/ProfileActions';
+import { ProfileTextField } from '@/components/profile/TextField';
 import { ThemedView } from '@/components/themed-view';
+import { API_BASE } from '@/constants/env';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Ionicons } from '@expo/vector-icons';
+import { useImageAttachment } from '@/hooks/use-image-attachment';
+import { encodeUriToDataUri, normalizeAvatarValue } from '@/lib/avatar';
+import { persistUserLocally, StoredUser } from '@/lib/session';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const theme = useColorScheme() ?? 'light';
+  const theme = (useColorScheme() ?? 'light') as 'light' | 'dark';
   const c = Colors[theme];
-  const API_BASE = (process?.env?.API_BASE as string) || 'http://0.0.0.0:8024';
   const insets = useSafeAreaInsets();
   const headerOffset = Math.min(Math.max(insets.top + 8, 12), 48);
   const bottomInset = insets.bottom + 32;
@@ -37,7 +38,43 @@ export default function ProfileScreen() {
   const [countryCode, setCountryCode] = useState('');
   const [email, setEmail] = useState('');
   const [location, setLocation] = useState('');
-  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [avatarPreviewUri, setAvatarPreviewUri] = useState<string | null>(null);
+  const [avatarUploadDataUri, setAvatarUploadDataUri] = useState<string | null>(null);
+  const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
+
+  const prepareAvatarUpload = useCallback(async (uri: string) => {
+    setAvatarPreviewUri(uri);
+    setIsProcessingPhoto(true);
+    try {
+      const dataUri = await encodeUriToDataUri(uri);
+      setAvatarPreviewUri(dataUri);
+      setAvatarUploadDataUri(dataUri);
+    } catch (error) {
+      console.warn('Failed to encode avatar', error);
+      Alert.alert('Error', 'Failed to process the selected image. Please try again.');
+    } finally {
+      setIsProcessingPhoto(false);
+    }
+  }, []);
+
+  const { openCamera, pickImageFromLibrary } = useImageAttachment({
+    onImageSelected: (uri) => {
+      void prepareAvatarUpload(uri);
+    },
+    cameraOptions: {
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+      permissionMessage: 'Camera permission is required to take a profile photo.',
+    },
+    libraryOptions: {
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+      allowsMultipleSelection: false,
+      permissionMessage: 'Photo library permission is required to choose a profile photo.',
+    },
+  });
 
   function handleCountryCodeChange(text: string) {
     // Only allow digits
@@ -54,44 +91,6 @@ export default function ProfileScreen() {
     if (d.length <= 3) return `(${p1}`;
     if (d.length <= 6) return `(${p1}) ${p2}`;
     return `(${p1}) ${p2}-${p3}`;
-  }
-
-  async function openCamera() {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission required', 'Camera permission is required to take a profile photo.');
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      setAvatarUri(result.assets[0].uri);
-    }
-  }
-
-  async function pickImageFromLibrary() {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission required', 'Photo library permission is required to choose a profile photo.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-      allowsMultipleSelection: false,
-    });
-
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      setAvatarUri(result.assets[0].uri);
-    }
   }
 
   // Load user data from storage (AsyncStorage or window.localStorage) on mount
@@ -119,7 +118,7 @@ export default function ProfileScreen() {
           if (u?.name) setName(u.name);
           if (u?.phone_number) setPhoneNumber(formatPhoneNumber(String(u.phone_number).replace(/\D/g, '')));
           if (u?.country_code) setCountryCode(u.country_code);
-          if (u?.avatar_uri) setAvatarUri(u.avatar_uri);
+          if (u?.avatar_uri) setAvatarPreviewUri(normalizeAvatarValue(u.avatar_uri));
         }
       } catch (e) {
         console.warn('Failed to load user for profile', e);
@@ -139,13 +138,17 @@ export default function ProfileScreen() {
 
   async function handleSave() {
     Keyboard.dismiss();
+    if (isProcessingPhoto) {
+      Alert.alert('Please wait', 'Still processing the selected photo. Try again in a moment.');
+      return;
+    }
     const phoneDigits = phoneNumber ? phoneNumber.replace(/\D/g, '') : '';
     const payload = {
       name: name || undefined,
       location: location || undefined,
       phone_number: phoneDigits || undefined,
       country_code: countryCode || undefined,
-      avatar_uri: avatarUri || undefined,
+      avatar_uri: avatarUploadDataUri || undefined,
     };
 
     try {
@@ -172,7 +175,7 @@ export default function ProfileScreen() {
         try { existing = JSON.parse(existingRaw); } catch { existing = null; }
       }
 
-      const userObj: any = {
+      const userObj: StoredUser = {
         user_id: data.user_id ?? (existing?.user_id ?? null),
         session_id: existing?.session_id ?? null,
         name: data.name ?? name ?? null,
@@ -180,11 +183,13 @@ export default function ProfileScreen() {
         location: data.location ?? location ?? null,
         phone_number: data.phone_number ? formatPhoneNumber(String(data.phone_number).replace(/\D/g, '')) : (phoneNumber ?? null),
         country_code: data.country_code ?? (countryCode || null),
-        avatar_uri: data.avatar_uri ?? avatarUri ?? null,
+        avatar_uri: normalizeAvatarValue(data.avatar_uri ?? existing?.avatar_uri ?? avatarPreviewUri ?? null),
       };
 
-      try { await AsyncStorage.setItem('user', JSON.stringify(userObj)); } catch (e) { console.warn('Failed to persist user (AsyncStorage)', e); }
-      try { if (typeof window !== 'undefined' && window.localStorage) window.localStorage.setItem('user', JSON.stringify(userObj)); } catch { /* ignore */ }
+      setAvatarPreviewUri(userObj.avatar_uri);
+      setAvatarUploadDataUri(null);
+
+      await persistUserLocally(userObj);
 
       Alert.alert('Saved', 'Profile updated');
     } catch (err) {
@@ -255,106 +260,66 @@ async function handleLogout() {
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
-              <View style={styles.header}>
-                <TouchableOpacity style={[styles.avatar, { borderColor: c.icon }]} onPress={handleChangePhoto} accessibilityLabel="Change profile photo">
-                  {avatarUri ? (
-                    <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
-                  ) : (() => {
-                    const initials = name
-                      .split(' ')
-                      .map(part => part.charAt(0))
-                      .filter(Boolean)
-                      .join('')
-                      .toUpperCase();
-                    return initials ? (
-                      <ThemedText style={[styles.avatarInitials]}>{initials}</ThemedText>
-                    ) : (
-                      <Ionicons name="person" size={56} color={c.icon} />
-                    );
-                  })()}
-                </TouchableOpacity>
-                <TouchableOpacity onPress={handleChangePhoto}>
-                  <ThemedText type="link">Change Photo</ThemedText>
-                </TouchableOpacity>
-              </View>
+              <AvatarPicker
+                uri={avatarPreviewUri}
+                name={name}
+                colors={c}
+                onPress={handleChangePhoto}
+                isProcessing={isProcessingPhoto}
+              />
 
               <View style={styles.form}>
-                <View style={styles.fieldGroup}>
-                <ThemedText>Name</ThemedText>
-                <TextInput
+                <ProfileTextField
+                  label="Name"
                   value={name}
                   onChangeText={setName}
                   placeholder="Name"
-                  placeholderTextColor={theme === 'dark' ? Colors.dark.icon : Colors.light.icon}
-                  style={[styles.input, { color: c.text, borderColor: c.icon, backgroundColor: c.background }]}
                   autoCapitalize="words"
                   returnKeyType="next"
+                  colors={c}
+                  theme={theme}
                 />
-              </View>
 
-              <View style={styles.fieldGroup}>
-                <ThemedText>Phone Number</ThemedText>
-                <View style={styles.phoneRow}>
-                  <View style={[styles.countryCodeInput, { borderColor: c.icon, backgroundColor: c.background }]}>
-                    <ThemedText style={styles.plusSign}>+</ThemedText>
-                    <TextInput
-                      value={countryCode}
-                      onChangeText={handleCountryCodeChange}
-                      placeholder="1"
-                      placeholderTextColor={theme === 'dark' ? Colors.dark.icon : Colors.light.icon}
-                      style={[styles.codeInput, { color: c.text }]}
-                      keyboardType="number-pad"
-                      maxLength={3}
-                      returnKeyType="next"
-                    />
-                  </View>
-                  <TextInput
-                    value={phoneNumber}
-                    onChangeText={(text) => {
-                      const digits = text.replace(/\D/g, '').slice(0, 10);
-                      setPhoneNumber(formatPhoneNumber(digits));
-                    }}
-                    placeholder="(123) 456-7890"
-                    placeholderTextColor={theme === 'dark' ? Colors.dark.icon : Colors.light.icon}
-                    style={[styles.input, styles.phoneInput, { color: c.text, borderColor: c.icon, backgroundColor: c.background }]}
-                    keyboardType="phone-pad"
-                    maxLength={14}
-                  />
-                </View>
-              </View>
+                <PhoneField
+                  colors={c}
+                  theme={theme}
+                  countryCode={countryCode}
+                  phoneNumber={phoneNumber}
+                  onCountryCodeChange={handleCountryCodeChange}
+                  onPhoneNumberChange={(text) => {
+                    const digits = text.replace(/\D/g, '').slice(0, 10);
+                    setPhoneNumber(formatPhoneNumber(digits));
+                  }}
+                />
 
-              <View style={styles.fieldGroup}>
-                <ThemedText>Email</ThemedText>
-                <TextInput
+                <ProfileTextField
+                  label="Email"
                   value={email}
                   onChangeText={setEmail}
                   placeholder="you@example.com"
-                  placeholderTextColor={theme === 'dark' ? Colors.dark.icon : Colors.light.icon}
-                  style={[styles.input, { color: c.text, borderColor: c.icon, backgroundColor: c.background }]}
                   keyboardType="email-address"
+                  autoCapitalize="none"
                   returnKeyType="next"
+                  colors={c}
+                  theme={theme}
                 />
-              </View>
 
-              <View style={styles.fieldGroup}>
-                <ThemedText>Location</ThemedText>
-                <TextInput
+                <ProfileTextField
+                  label="Location"
                   value={location}
                   onChangeText={setLocation}
                   placeholder="City, Country"
-                  placeholderTextColor={theme === 'dark' ? Colors.dark.icon : Colors.light.icon}
-                  style={[styles.input, { color: c.text, borderColor: c.icon, backgroundColor: c.background }]}
                   returnKeyType="done"
+                  colors={c}
+                  theme={theme}
                 />
-              </View>
-                <View style={styles.actionsContainer}>
-                  <TouchableOpacity onPress={handleSave} style={[styles.primaryButton, { backgroundColor: c.tint }]} accessibilityLabel="Save profile">
-                    <ThemedText style={styles.primaryButtonText}>Save</ThemedText>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={handleLogout} style={styles.destructiveButton} accessibilityLabel="Log out">
-                    <ThemedText style={styles.destructiveButtonText}>Log out</ThemedText>
-                  </TouchableOpacity>
-                </View>
+
+                <ProfileActions
+                  onSave={handleSave}
+                  onLogout={handleLogout}
+                  tintColor={c.tint}
+                  disabled={isProcessingPhoto}
+                />
               </View>
             </ScrollView>
           </ThemedView>
@@ -377,92 +342,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     gap: 20,
   },
-  header: {
-    alignItems: 'center',
-    gap: 12,
-  },
-  avatar: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-  avatarImage: {
-    width: '100%',
-    height: '100%',
-  },
-  avatarInitials: {
-    fontSize: 36,
-    lineHeight: 42,
-    textAlign: 'center',
-  },
   form: {
     gap: 12,
-  },
-  fieldGroup: {
-    gap: 6,
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  phoneRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  countryCodeInput: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    minWidth: 70,
-  },
-  plusSign: {
-    fontSize: 16,
-    marginRight: 2,
-  },
-  codeInput: {
-    fontSize: 16,
-    minWidth: 30,
-    padding: 0,
-  },
-  phoneInput: {
-    flex: 1,
-  },
-  actionsContainer: {
-    marginTop: 8,
-    alignItems: 'center',
-    width: '100%',
-    gap: 8,
-  },
-  primaryButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 28,
-    borderRadius: 12,
-    minWidth: 160,
-    alignItems: 'center',
-  },
-  primaryButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  destructiveButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-    borderWidth: 1,
-    alignItems: 'center',
-    width: 160,
-  },
-  destructiveButtonText: {
-    color: '#d9534f',
-    fontWeight: '600',
   },
 });

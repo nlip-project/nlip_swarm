@@ -1,6 +1,7 @@
 import { ThemedText } from "@/components/themed-text";
+import { API_BASE } from "@/constants/env";
 import { Colors } from "@/constants/theme";
-import React, { ReactNode, useEffect, useMemo, useState } from "react";
+import React, { ReactNode, useEffect, useState } from "react";
 import {
   Alert,
   Animated,
@@ -43,11 +44,6 @@ export function Drawout({
   const panelWidth = Math.min(260, screenWidth * 0.8);
   const slideAnim = useState(new Animated.Value(-panelWidth))[0];
 
-  const resolvedApiBase = useMemo(() => {
-    const origin = apiBase ?? process?.env?.EXPO_PUBLIC_API_BASE ?? (global as any)?.API_BASE ?? "http://0.0.0.0:8024";
-    return origin.replace(/\/$/, "");
-  }, [apiBase]);
-
   useEffect(() => {
     if (open) setLayerVisible(true);
 
@@ -67,7 +63,7 @@ export function Drawout({
       (async () => {
         setLoading(true);
         try {
-          const resp = await fetch(`${resolvedApiBase}/conversations`, { credentials: "include" });
+          const resp = await fetch(`${API_BASE}/conversations`, { credentials: "include" });
           if (!resp.ok) {
             if (!canceled) setConversations([]);
             return;
@@ -87,7 +83,7 @@ export function Drawout({
       canceled = true;
       animation.stop();
     };
-  }, [open, panelWidth, resolvedApiBase, slideAnim]);
+  }, [open, panelWidth, slideAnim]);
 
   useEffect(() => {
     onOpenChange?.(open);
@@ -101,7 +97,7 @@ export function Drawout({
 
   async function archiveConversation(id: string) {
     try {
-      const res = await fetch(`${resolvedApiBase}/conversations/${id}/archive`, {
+      const res = await fetch(`${API_BASE}/conversations/${id}/archive`, {
         method: "POST",
         credentials: "include",
       });

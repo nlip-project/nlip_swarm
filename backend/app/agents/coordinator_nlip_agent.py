@@ -13,11 +13,15 @@ AGENT:Name\n
 CAP1:desc, CAP2:desc, ...
 """
 
+import asyncio
+import logging
+import os
 from typing import Optional, Any, Dict
 from urllib.parse import urlparse
 from app._logging import logger
 
 from nlip_sdk.nlip import NLIP_Factory, NLIP_Message
+from app.agents.base import MODEL as DEFAULT_MODEL
 from app.agents.nlip_agent import NlipAgent
 from app.http_client.nlip_async_client import NlipAsyncClient
 from app.agents.imageRecognition import describe_image
@@ -26,13 +30,19 @@ from app.system.config import MODELS
 sessions = {}
 
 
-#MODEL = "openai/gpt-4o-mini"
-#MODEL = "ollama_chat/llama3.2:3b"
-# MODEL = "cerebras/llama3.3-70b"
-MODEL = MODELS.get('coordinator_model', 'cerebras/llama3.3-70b')
+_OLLAMA_URL   = os.getenv("OLLAMA_URL")
+_OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
+
+if _OLLAMA_URL and _OLLAMA_MODEL:
+    MODEL    = f"openai/{_OLLAMA_MODEL}"
+    API_BASE = _OLLAMA_URL.rstrip("/")
+else:
+    MODEL    = DEFAULT_MODEL
+    API_BASE = None
 
 
 async def connect_to_server(url: str):
+    """Connect to an NLIP server at the given URL."""
     try:
         parsed_url = urlparse(str(url))
         scheme = parsed_url.scheme
@@ -55,6 +65,7 @@ async def connect_to_server(url: str):
     return f"Connected to {scheme}://{netloc}/"
 
 async def send_to_server(url: str, message: str) -> dict:
+    """Send a message to a connected NLIP server at the given URL and return the response."""
     parsed_url = urlparse(str(url))
     scheme = parsed_url.scheme
     netloc = parsed_url.netloc
@@ -235,6 +246,8 @@ When the incoming NLIP message includes media/structured content (e.g., binary/i
 Tool calling rules:
 - Call at most ONE tool per turn. If multiple steps are needed (e.g., connect, then send), do them sequentially across turns.
 - Pass tool arguments as a JSON object with named keys, e.g., {"url": "...", "message": "..."}.
+- ONLY use URLs that were explicitly provided to you or discovered via get_all_capabilities. Never invent or guess external URLs.
+- Before fulfilling any user request that requires sending to a server, you MUST call get_all_capabilities first if you have not already done so in this session. Use the results to determine which server to route the request to.
 """
 
 class CoordinatorNlipAgent(NlipAgent):
@@ -243,10 +256,11 @@ class CoordinatorNlipAgent(NlipAgent):
         model: str = MODEL,
         instruction: Optional[str] = None,
         tools: Optional[list] = None,
+        api_base: Optional[str] = API_BASE,
     ):
         if tools is None:
             tools = [connect_to_server, send_to_server, get_all_capabilities]
-        super().__init__(name=name, model=model, tools=tools)
+        super().__init__(name=name, model=model, tools=tools, api_base=api_base)
 
         self.add_instruction("You are an agent with tools for querying other NLIP Agent Servers.")
         self.add_instruction(NLIP_COORDINATOR_PROMPT)

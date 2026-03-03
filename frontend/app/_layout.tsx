@@ -1,3 +1,4 @@
+import { normalizeAvatarValue } from '@/lib/avatar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, useRouter } from 'expo-router';
@@ -6,6 +7,7 @@ import React, { useEffect } from 'react';
 import 'react-native-reanimated';
 import { navigate, setRouter } from '../lib/navigation';
 
+import { API_BASE } from '@/constants/env';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export const unstable_settings = {
@@ -15,15 +17,18 @@ export const unstable_settings = {
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const router = useRouter();
-  // expose router to navigation helper
-  setRouter(router);
+  useEffect(() => {
+    setRouter(router);
+  }, [router]);
 
   // Refresh stored user info from server on app start
   useEffect(() => {
     // Install a global fetch wrapper that redirects to login on 401 responses.
     const originalFetch = global.fetch;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (global as any).fetch = async (input: any, init?: any) => {
+    (global as typeof global & { fetch: typeof fetch }).fetch = async (
+      input: RequestInfo | URL,
+      init?: RequestInit
+    ) => {
       try {
         const resp = await originalFetch(input, init);
         if (resp && resp.status === 401) {
@@ -42,7 +47,7 @@ export default function RootLayout() {
     };
 
     let mounted = true;
-    const API_BASE = (process?.env?.API_BASE as string) || 'http://0.0.0.0:8024';
+
     (async () => {
       try {
         const res = await fetch(`${API_BASE}/me`, { method: 'GET', credentials: 'include' });
@@ -56,7 +61,7 @@ export default function RootLayout() {
             location: data.location ?? null,
             phone_number: data.phone_number ?? null,
             country_code: data.country_code ?? null,
-            avatar_uri: data.avatar_uri ?? null,
+            avatar_uri: normalizeAvatarValue(data.avatar_uri ?? null),
             session_id: null,
           };
           try { await AsyncStorage.setItem('user', JSON.stringify(userObj)); } catch { /* ignore */ }
@@ -76,7 +81,9 @@ export default function RootLayout() {
     return () => {
       mounted = false;
       // restore original fetch
-      try { (global as any).fetch = originalFetch; } catch {}
+      try {
+        (global as typeof global & { fetch: typeof fetch }).fetch = originalFetch;
+      } catch {}
     };
   }, []);
 
