@@ -2,7 +2,7 @@ import os
 import argparse
 
 from nlip_sdk.nlip import NLIP_Factory, NLIP_Message
-from ..agents.base import Agent
+from ..agents.nlip_agent import NlipAgent
 
 from ..http_server.nlip_session_server import SessionManager, NlipSessionServer
 import uvicorn
@@ -13,7 +13,7 @@ class BasicManager(SessionManager):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        self.myAgent = Agent(
+        self.myAgent = NlipAgent(
             "BasicAgent"
         )
     

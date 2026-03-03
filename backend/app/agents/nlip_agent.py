@@ -1,13 +1,7 @@
 import asyncio
 import logging
 from typing import Callable, Optional
-from .base import Agent, MODEL
-
-
-#MODEL = "openai/gpt-4o-mini"
-#MODEL = "ollama_chat/llama3.2:3b"
-MODEL = "cerebras/llama3.3-70b"
-
+from .base import Agent, MODEL, API_BASE
 
 logger = logging.getLogger("NLIP")
 
@@ -39,8 +33,9 @@ class NlipAgent(Agent):
                  name: str,
                  model: str = MODEL,
                 instruction: Optional[str] = None,
-                tools: Optional[list[Callable]] = None):
-        super().__init__(name, model, NLIP_INSTRUCTION, tools)
+                tools: Optional[list[Callable]] = None,
+                api_base: Optional[str] = API_BASE):
+        super().__init__(name, model, NLIP_INSTRUCTION, tools, api_base=api_base)
 
         if instruction:
             self.add_instruction(instruction)
