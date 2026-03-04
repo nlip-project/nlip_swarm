@@ -308,7 +308,6 @@ class CoordinatorNlipAgent(NlipAgent):
         if tools is None:
             tools = [connect_to_server, send_to_server, get_all_capabilities]
         super().__init__(name=name, model=model, tools=tools, api_base=api_base)
-        self._one_shot_tools = {"get_all_capabilities"}
 
         self.add_instruction("You are an agent with tools for querying other NLIP Agent Servers.")
         self.add_instruction(NLIP_COORDINATOR_PROMPT)
