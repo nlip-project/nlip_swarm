@@ -112,6 +112,10 @@ class Agent:
 
         content = result if isinstance(result, str) else json.dumps(result)
         logger.debug(f"[{self.name}] Tool '{name}' returned: {content[:200]}{'...' if len(str(content)) > 200 else ''}")
+
+        if name in getattr(self, "_one_shot_tools", set()):
+            self.tools = [t for t in self.tools if t["function"]["name"] != name]
+
         self.messages.append(
             {
                 "tool_call_id": tool_call_id,
