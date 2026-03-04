@@ -19,8 +19,12 @@ from .translation import get_translation
 logger = logging.getLogger("NLIP")
 
 
-WHISPER_URL = os.getenv("WHISPER_URL", "http://localhost:9002").rstrip("/")
+# WHISPER_URL = os.getenv("WHISPER_URL", "http://localhost:9002").rstrip("/")
 WHISPER_ENDPOINT = os.getenv("WHISPER_ENDPOINT", "/v1/audio/transcriptions")
+
+WHISPER_URL = MODELS.get('audio_url', "http://localhost:9002").rstrip("/")
+
+
 WHISPER_MODEL = MODELS.get('audio_model', 'large-v3')
 WHISPER_TIMEOUT = float(os.getenv("WHISPER_TIMEOUT", "90.0"))
 

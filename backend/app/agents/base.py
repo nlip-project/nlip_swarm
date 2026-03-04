@@ -12,8 +12,10 @@ from app.system.config import MODELS
 #litellm._turn_on_debug() #pyright: ignore
 load_dotenv()
 
-_OLLAMA_URL   = os.getenv("OLLAMA_URL")
-_OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
+# _OLLAMA_URL   = os.getenv("OLLAMA_URL")
+# _OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
+_OLLAMA_URL  = MODELS.get('ollama_url')
+_OLLAMA_MODEL = MODELS.get('ollama_model')
 
 if _OLLAMA_URL and _OLLAMA_MODEL:
     MODEL    = f"openai/{_OLLAMA_MODEL}"
