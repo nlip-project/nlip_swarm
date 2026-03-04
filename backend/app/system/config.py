@@ -8,11 +8,14 @@ def _env_url(key: str, default: str) -> str:
 
 MOUNT_URLS = {
     "coord": _env_url("NLIP_COORD_URL", "http://0.0.0.0:8024"),
-    "basic": _env_url("NLIP_BASIC_URL", "mem://basic"),
-    "translate": _env_url("NLIP_TRANSLATE_URL", "mem://translate"),
-    "text": _env_url("NLIP_TEXT_URL", "mem://text"),
-    "sound": _env_url("NLIP_SOUND_URL", "mem://sound"),
-    "image": _env_url("NLIP_IMAGE_URL", "mem://image"),
+    # Default to container-to-container HTTP endpoints inside Docker. Override with
+    # NLIP_*_URL env vars if you run the agents in-process and want in-memory ASGI
+    # routing (mem://...).
+    "basic": _env_url("NLIP_BASIC_URL", "http://basic:8025"),
+    "translate": _env_url("NLIP_TRANSLATE_URL", "http://translate:8026"),
+    "text": _env_url("NLIP_TEXT_URL", "http://text:8027"),
+    "sound": _env_url("NLIP_SOUND_URL", "http://sound:8029"),
+    "image": _env_url("NLIP_IMAGE_URL", "http://image:8028"),
 }
 
 COORDINATOR_URL = MOUNT_URLS["coord"]

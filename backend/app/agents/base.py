@@ -66,6 +66,8 @@ class Agent:
         for fn in (tools or []):
             self.add_tool(fn)
 
+        self._base_messages = list(self.messages)
+
     def _trel(self):
         return time.time() - self.tstart
 
@@ -206,8 +208,11 @@ class Agent:
         return self.final_text + self.tool_outputs[-1:]
 
     async def process_query(self, query: str) -> list[str]:
+        # Reset per-request state to keep prompt size bounded.
         self.final_text = []
         self.tool_outputs = []
+        self._last_nlip_json = None
+        self.messages = list(self._base_messages)
         self.messages.append({
             "role": "user",
             "content": query
@@ -215,8 +220,10 @@ class Agent:
         return await self._drive_llm()
     
     async def process_nlip(self, nlip_msg: Any) -> list[str]:
+        # Reset per-request state to keep prompt size bounded.
         self.final_text = []
         self.tool_outputs = []
+        self.messages = list(self._base_messages)
 
         try:
             nlip_json = nlip_msg.to_dict()
