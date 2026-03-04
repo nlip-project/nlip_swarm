@@ -26,6 +26,7 @@ from app.agents.base import MODEL as DEFAULT_MODEL
 from app.agents.nlip_agent import NlipAgent
 from app.http_client.nlip_async_client import NlipAsyncClient
 from app.agents.imageRecognition import describe_image
+from app.system.config import MOUNT_URLS
 
 sessions = {}
 from app._logging import logger
@@ -56,9 +57,13 @@ async def connect_to_server(url: str):
     if not netloc:
         return "Exception: Request URL is missing a host."
 
+    allowed_urls = {f"{urlparse(v).scheme}://{urlparse(v).netloc}" for v in MOUNT_URLS.values()}
+    hashkey = f"{scheme}://{netloc}"
+    if hashkey not in allowed_urls:
+        return f"Exception: Host '{hashkey}' is not in the allowed agent list."
+
     client = NlipAsyncClient.create_from_url(f"{scheme}://{netloc}/nlip")
 
-    hashkey = f"{scheme}://{netloc}"
     sessions[hashkey] = client
 
     logger.info(f"Saved {netloc} with client {client}")
@@ -171,7 +176,7 @@ async def route_by_format(message: dict) -> dict:
 
     if format_info['has_image']:
         return {
-            'recommended_url': 'mem://image',
+            'recommended_url': MOUNT_URLS.get('image', 'http://image:8028'),
             'agent_name': 'Image',
             'confidence': 'high',
             'reason': 'Message contains binary image data'
@@ -179,7 +184,7 @@ async def route_by_format(message: dict) -> dict:
 
     if format_info['has_audio']:
         return {
-            'recommended_url': 'mem://sound',
+            'recommended_url': MOUNT_URLS.get('sound', 'http://sound:8029'),
             'agent_name': 'Sound',
             'confidence': 'high',
             'reason': 'Message contains binary audio data'

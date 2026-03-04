@@ -233,10 +233,23 @@ class Agent:
             except (AttributeError, TypeError) as e:
                 raise RuntimeError(f"Could not convert NLIP_Message to dict: {e}")
         self._last_nlip_json = nlip_json
-        self.messages.append({
-            "role": "user",
-            "content": "ORIGINAL_NLIP_JSON:\n" +json.dumps(nlip_json, ensure_ascii=False)
-        })
+
+        # Keep prompts small for plain-text-only requests to avoid blowing tiny context windows.
+        text_only = False
+        try:
+            text_only = bool((nlip_json.get("format") or "").lower().startswith("text")) and not nlip_json.get("submessages")
+        except Exception:
+            text_only = False
+
+        if not text_only:
+            json_payload = json.dumps(nlip_json, ensure_ascii=False)
+            # Hard cap the JSON block length to reduce token usage for large payloads.
+            if len(json_payload) > 2000:
+                json_payload = json_payload[:2000] + "... (truncated)"
+            self.messages.append({
+                "role": "user",
+                "content": "ORIGINAL_NLIP_JSON:\n" + json_payload
+            })
 
         text = ""
         try:
