@@ -35,6 +35,13 @@ DEFAULT_PATHS = {
     'json_path': './'
 }
 
+DEFAULT_URLS = {
+    'ollama_url': None,
+    'image_url': None,
+    'audio_url': None,
+    'translation_url': None,
+}
+
 config = configparser.ConfigParser()
 if not MODELS_INI_PATH.exists():
     config['AGENTS'] = DEFAULT_AGENT_MODELS
@@ -46,5 +53,8 @@ if 'AGENTS' not in config:
     config['AGENTS'] = DEFAULT_AGENT_MODELS
 if 'PATHS' not in config:
     config['PATHS'] = DEFAULT_PATHS
+if 'URLS' not in config:
+    config['URLS'] = DEFAULT_URLS
 MODELS = { name: model for name, model in config['AGENTS'].items() }
 PATHS = { name: path for name, path in config['PATHS'].items() }
+URLS = { name: url for name, url in config['URLS'].items() }
