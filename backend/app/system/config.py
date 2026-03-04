@@ -23,7 +23,6 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 MODELS_INI_PATH = ROOT_DIR / "models.ini"
 
 DEFAULT_AGENT_MODELS = {
-    'ollama_model': 'cerebras/llama3.3-70b',
     'base_model': 'cerebras/llama3.3-70b',
     'coordinator_model': 'cerebras/llama3.3-70b',
     'image_recognition_model': 'llava',

@@ -3,17 +3,13 @@ from typing import Optional, Any, cast
 
 from litellm import acompletion
 
-from backend.app.system.config import MODELS
-
 from .nlip_agent import NlipAgent
 from .base import MODEL as DEFAULT_MODEL
 
 logger = logging.getLogger("NLIP")
 
-# _TRANSLATION_URL   = os.getenv("TRANSLATION_URL")
-# _TRANSLATION_MODEL = os.getenv("TRANSLATION_MODEL")
-_TRANSLATION_URL  = MODELS.get('translation_url')
-_TRANSLATION_MODEL = MODELS.get('translation_model')
+_TRANSLATION_URL   = os.getenv("TRANSLATION_URL")
+_TRANSLATION_MODEL = os.getenv("TRANSLATION_MODEL")
 
 if _TRANSLATION_URL and _TRANSLATION_MODEL:
     TRANSLATION_LLM_MODEL    = f"openai/{_TRANSLATION_MODEL}"

@@ -15,10 +15,8 @@ from .base import MODEL
 from app._logging import logger
 
 
-# OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
-OLLAMA_URL = MODELS.get('ollama_url', "http://localhost:11434").rstrip("/")
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
 OLLAMA_IMAGE_MODEL = MODELS.get('image_recognition_model', 'llava')
-
 OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "60.0"))
 
 
