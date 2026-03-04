@@ -112,8 +112,6 @@ class Agent:
 
         content = result if isinstance(result, str) else json.dumps(result)
         logger.debug(f"[{self.name}] Tool '{name}' returned: {content[:200]}{'...' if len(str(content)) > 200 else ''}")
-
-
         self.messages.append(
             {
                 "tool_call_id": tool_call_id,
