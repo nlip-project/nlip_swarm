@@ -1,15 +1,19 @@
 import React from 'react';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
+import { getContrastingTextColor } from '@/lib/color';
 
 interface ProfileActionsProps {
   onSave: () => void;
   onLogout: () => void;
   tintColor: string;
+  buttonTextColor: string;
   disabled?: boolean;
 }
 
-export function ProfileActions({ onSave, onLogout, tintColor, disabled }: ProfileActionsProps) {
+export function ProfileActions({ onSave, onLogout, tintColor, buttonTextColor, disabled }: ProfileActionsProps) {
+  const resolvedTextColor = getContrastingTextColor(tintColor, buttonTextColor, '#11181C');
+
   return (
     <View style={styles.actionsContainer}>
       <TouchableOpacity
@@ -18,7 +22,7 @@ export function ProfileActions({ onSave, onLogout, tintColor, disabled }: Profil
         accessibilityLabel="Save profile"
         disabled={disabled}
       >
-        <ThemedText style={styles.primaryButtonText}>Save</ThemedText>
+        <ThemedText style={[styles.primaryButtonText, { color: resolvedTextColor }]}>Save</ThemedText>
       </TouchableOpacity>
       <TouchableOpacity
         onPress={onLogout}
@@ -46,7 +50,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   primaryButtonText: {
-    color: '#fff',
+    fontSize: 16,
+    lineHeight: 20,
     fontWeight: '600',
   },
   destructiveButton: {
@@ -59,6 +64,8 @@ const styles = StyleSheet.create({
     borderColor: '#d9534f',
   },
   destructiveButtonText: {
+    fontSize: 16,
+    lineHeight: 20,
     color: '#d9534f',
     fontWeight: '600',
   },
