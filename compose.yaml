@@ -31,6 +31,9 @@ services:
       llm:
         endpoint_var: OLLAMA_URL
         model_var: OLLAMA_MODEL
+      translation:
+        endpoint_var: TRANSLATION_URL
+        model_var: TRANSLATION_MODEL
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-dockermodelrunner}
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
@@ -63,10 +66,6 @@ services:
         SERVICE_ROLE: translate
     command:
       ["uvicorn", "app.servers.translate_server:app", "--host", "0.0.0.0", "--port", "8026"]
-    models:
-      llm:
-        endpoint_var: TRANSLATION_URL
-        model_var: TRANSLATION_MODEL
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
     expose:
@@ -163,6 +162,16 @@ models:
   llm:
     model: ai/llama3.1:8B-Q4_K_M
     context_size: 8192
+    runtime_flags:
+      - "--n-gpu-layers"
+      - "${DMR_N_GPU_LAYERS:-0}"
+      - "--main-gpu"
+      - "${DMR_MAIN_GPU:-0}"
+      - "--split-mode"
+      - "${DMR_SPLIT_MODE:-layer}"
+  translation:
+    model: ai/llama3.2:3B-Q4_0
+    context_size: 4096
     runtime_flags:
       - "--n-gpu-layers"
       - "${DMR_N_GPU_LAYERS:-0}"

@@ -9,7 +9,6 @@ from typing import Optional
 import httpx
 
 from .nlip_agent import NlipAgent
-from .base import MODEL
 
 from app._logging import logger
 
@@ -17,6 +16,8 @@ from app._logging import logger
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_IMAGE_MODEL = os.getenv("OLLAMA_IMAGE_MODEL") or os.getenv("OLLAMA_MODEL", "llava")
 OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "60.0"))
+LLM_MODEL = f"openai/{os.getenv('OLLAMA_MODEL', OLLAMA_IMAGE_MODEL)}"
+LLM_API_BASE = OLLAMA_URL.rstrip("/")
 
 
 def _strip_data_url(image_base64: str) -> str:
@@ -77,10 +78,16 @@ class ImageNlipAgent(NlipAgent):
     def __init__(
         self,
         name: str = "Image",
-        model: str = MODEL,
+        model: str = LLM_MODEL,
         instruction: Optional[str] = None,
     ) -> None:
-        super().__init__(name=name, model=model, instruction=instruction, tools=[describe_image])
+        super().__init__(
+            name=name,
+            model=model,
+            instruction=instruction,
+            tools=[describe_image],
+            api_base=LLM_API_BASE,
+        )
 
         self.add_instruction(
             "You can help users understand images by calling the `describe_image` tool. "
