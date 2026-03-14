@@ -1,0 +1,92 @@
+# syntax=docker/dockerfile:1
+
+ARG PYTHON_VERSION=3.13.1
+FROM python:${PYTHON_VERSION}-slim AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=bind,source=requirements.txt,target=requirements.txt \
+    python -m pip install -r requirements.txt
+
+FROM base AS pruner
+
+ARG SERVICE_ROLE
+
+COPY . .
+
+RUN python - <<'PY'
+import os
+from pathlib import Path
+
+role = os.environ.get("SERVICE_ROLE", "").strip().lower()
+if not role:
+    raise SystemExit("SERVICE_ROLE build arg is required")
+
+root = Path("/app")
+agents_dir = root / "app" / "agents"
+servers_dir = root / "app" / "servers"
+http_client_dir = root / "app" / "http_client"
+system_dir = root / "app" / "system"
+
+keep_agents = {
+    "basic": {"__init__.py", "base.py", "nlip_agent.py"},
+    "translate": {"__init__.py", "base.py", "nlip_agent.py", "translation.py"},
+    "text": {"__init__.py", "base.py", "nlip_agent.py", "textAgent.py"},
+    "image": {"__init__.py", "base.py", "nlip_agent.py", "imageRecognition.py"},
+    "sound": {"__init__.py", "base.py", "nlip_agent.py", "sound.py", "translation.py"},
+    "coordinator": {
+        "__init__.py",
+        "base.py",
+        "nlip_agent.py",
+        "coordinator_nlip_agent.py",
+        "imageRecognition.py",
+        "sound.py",
+        "translation.py",
+    },
+}
+
+keep_servers = {
+    "basic": {"basic_server.py"},
+    "translate": {"translate_server.py"},
+    "text": {"text_server.py"},
+    "image": {"image_server.py"},
+    "sound": {"sound_server.py"},
+    "coordinator": {"coordinator_server.py"},
+}
+
+if role not in keep_agents:
+    raise SystemExit(f"Unsupported SERVICE_ROLE: {role}")
+
+for path in agents_dir.glob("*.py"):
+    if path.name not in keep_agents[role]:
+        path.unlink(missing_ok=True)
+
+for path in servers_dir.glob("*.py"):
+    if path.name not in keep_servers[role]:
+        path.unlink(missing_ok=True)
+
+if role != "coordinator" and http_client_dir.exists():
+    for path in http_client_dir.glob("*.py"):
+        if path.name != "__init__.py":
+            path.unlink(missing_ok=True)
+
+if role == "coordinator":
+    for path in system_dir.glob("*.py"):
+        if path.name not in {"__init__.py", "config.py"}:
+            path.unlink(missing_ok=True)
+else:
+    for path in system_dir.glob("*.py"):
+        if path.name != "__init__.py":
+            path.unlink(missing_ok=True)
+PY
+
+FROM base AS final
+
+COPY --from=pruner /app /app
+
+EXPOSE 8024
+CMD ["python", "-m", "app.system.main"]
