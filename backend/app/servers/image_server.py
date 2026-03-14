@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 from nlip_sdk.nlip import NLIP_Factory, NLIP_Message
 
-from app.agents.imageRecognition import ImageNlipAgent, describe_image
+from app.agents.imageRecognition import describe_image
 from app.http_server.nlip_session_server import NlipSessionServer, SessionManager
 
 
@@ -16,13 +16,13 @@ CAP_QUERY_PHRASES = {
 }
 
 
-def _capabilities_text(agent: ImageNlipAgent) -> str:
+def _capabilities_text() -> str:
     capabilities = [
-        "IMAGE_DESCRIPTION:Describes images using Llava model|FORMATS:[binary]|SUBFORMATS:[image]",
+        "IMAGE_DESCRIPTION:Describes images using local DMR vision model|FORMATS:[binary]|SUBFORMATS:[image]",
         "PROMPT_GUIDANCE:Accepts optional prompts|FORMATS:[text]",
         "DATA_URL_STRIPPING:Handles base64 or data URLs",
     ]
-    return f"AGENT:{agent.name}\n" + ", ".join(capabilities)
+    return "AGENT:image\n" + ", ".join(capabilities)
 
 
 def _get(entry: Any, key: str) -> Any:
@@ -54,7 +54,7 @@ def _find_image_content(entry: Any) -> Optional[str]:
 
 class ImageSessionManager(SessionManager):
     def __init__(self) -> None:
-        self.agent = ImageNlipAgent("image")
+        pass
 
     async def process_nlip(self, msg: NLIP_Message) -> NLIP_Message:
         text = msg.extract_text()
@@ -62,7 +62,7 @@ class ImageSessionManager(SessionManager):
         if text:
             normalized = text.strip().lower()
             if normalized in CAP_QUERY_PHRASES:
-                return NLIP_Factory.create_text(_capabilities_text(self.agent))
+                return NLIP_Factory.create_text(_capabilities_text())
 
         try:
             msg_dict = msg.to_dict() if hasattr(msg, "to_dict") else msg.model_dump()

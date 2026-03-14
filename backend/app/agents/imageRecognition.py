@@ -1,4 +1,4 @@
-"""Image agent that calls a local Llava model through clearly defined tools."""
+"""Image helper that calls a local Docker Model Runner vision model."""
 
 from __future__ import annotations
 
@@ -8,16 +8,12 @@ from typing import Optional
 
 import httpx
 
-from .nlip_agent import NlipAgent
-
 from app._logging import logger
 
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_IMAGE_MODEL = os.getenv("OLLAMA_IMAGE_MODEL") or os.getenv("OLLAMA_MODEL", "ai/llava")
+OLLAMA_IMAGE_MODEL = os.getenv("OLLAMA_IMAGE_MODEL") or os.getenv("OLLAMA_MODEL", "ai/ministral3")
 OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "60.0"))
-LLM_MODEL = f"openai/{os.getenv('OLLAMA_MODEL', OLLAMA_IMAGE_MODEL)}"
-LLM_API_BASE = OLLAMA_URL.rstrip("/")
 
 
 def _strip_data_url(image_base64: str) -> str:
@@ -26,8 +22,29 @@ def _strip_data_url(image_base64: str) -> str:
     return image_base64
 
 
+def _chat_completions_url(base: str) -> str:
+    normalized = base.rstrip("/")
+    if normalized.endswith("/v1"):
+        return f"{normalized}/chat/completions"
+    return f"{normalized}/v1/chat/completions"
+
+
+def _coerce_message_content(content: object) -> str:
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str) and text.strip():
+                    parts.append(text.strip())
+        return "\n".join(parts).strip()
+    return ""
+
+
 async def describe_image(image_base64: str, prompt: Optional[str] = None) -> str:
-    """Describe an image by calling the configured Llava model.
+    """Describe an image by calling the configured vision model over OpenAI API.
 
     Args:
         image_base64: Base64 encoded image data or data URL.
@@ -39,56 +56,44 @@ async def describe_image(image_base64: str, prompt: Optional[str] = None) -> str
     except Exception:  # pragma: no cover - invalid user input
         return "The provided image payload is not valid base64 data."
 
+    image_data_url = f"data:image/jpeg;base64,{clean_b64}"
     payload = {
         "model": OLLAMA_IMAGE_MODEL,
-        "prompt": prompt or "Describe everything that can be observed in this image.",
-        "images": [clean_b64],
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt or "Describe everything that can be observed in this image."},
+                    {"type": "image_url", "image_url": {"url": image_data_url}},
+                ],
+            }
+        ],
         "stream": False,
     }
 
-    # Docker Model Runner may inject an OpenAI-style endpoint ending in /v1.
-    # Ollama image generation API is rooted at /api/generate.
-    base_url = OLLAMA_URL[:-3] if OLLAMA_URL.endswith("/v1") else OLLAMA_URL
-    url = f"{base_url.rstrip('/')}/api/generate"
-    logger.debug("Image agent calling Llava", extra={"url": url, "model": OLLAMA_IMAGE_MODEL})
+    url = _chat_completions_url(OLLAMA_URL)
+    logger.debug("Image agent calling vision model", extra={"url": url, "model": OLLAMA_IMAGE_MODEL})
 
     async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
         try:
             response = await client.post(url, json=payload)
             response.raise_for_status()
         except httpx.HTTPError as exc: 
-            logger.exception("Llava request failed: %s", exc)
-            return "Unable to analyze the image because the Llava request failed."
+            logger.exception("Vision request failed: %s", exc)
+            return "Unable to analyze the image because the local vision model request failed."
 
     try:
         data = response.json()
     except ValueError:
-        logger.exception("Llava response was not valid JSON")
-        return "Unable to analyze the image because the Llava response was invalid."
+        logger.exception("Vision response was not valid JSON")
+        return "Unable to analyze the image because the model response was invalid."
 
-    content = data.get("response") if isinstance(data, dict) else None
-    if not isinstance(content, str):
-        return "The Llava endpoint returned an unexpected payload."
-    return content.strip()
+    try:
+        choice = data["choices"][0]["message"]["content"]
+    except Exception:
+        return "The vision endpoint returned an unexpected payload."
 
-
-class ImageNlipAgent(NlipAgent):
-    """NLIP agent exposing the `describe_image` tool."""
-
-    def __init__(
-        self,
-        name: str = "Image",
-        model: str = LLM_MODEL,
-        instruction: Optional[str] = None,
-    ) -> None:
-        super().__init__(
-            name=name,
-            model=model,
-            instruction=instruction,
-            tools=[describe_image],
-            api_base=LLM_API_BASE,
-        )
-
-        self.add_instruction(
-            "You can help users understand images by calling the `describe_image` tool. "
-        )
+    content = _coerce_message_content(choice)
+    if not content:
+        return "The vision endpoint returned an empty response."
+    return content

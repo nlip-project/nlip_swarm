@@ -103,7 +103,7 @@ services:
         model_var: OLLAMA_MODEL
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-dockermodelrunner}
-      OLLAMA_IMAGE_MODEL: ai/llava
+      OLLAMA_IMAGE_MODEL: ai/ministral3
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
     expose:
       - 8028
@@ -180,7 +180,7 @@ models:
       - "--split-mode"
       - "${DMR_SPLIT_MODE:-layer}"
   image_llm:
-    model: ai/llava
+    model: ai/ministral3
     context_size: 4096
     runtime_flags:
       - "--n-gpu-layers"
