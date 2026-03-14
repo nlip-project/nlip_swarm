@@ -30,6 +30,8 @@ from app.agents.imageRecognition import describe_image
 sessions = {}
 from app._logging import logger
 
+CAPABILITIES_QUERY = "what are your nlip capabilities?"
+
 _OLLAMA_URL   = os.getenv("OLLAMA_URL")
 _OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
 
@@ -367,6 +369,50 @@ class CoordinatorNlipAgent(NlipAgent):
                 except Exception as exc:
                     logger.exception(f"[{self.name}] Error from sound server: {exc}")
                     return [f"Error processing audio: {exc}"]
+
+            text = ""
+            try:
+                text = (nlip_msg.extract_text() or "").strip()
+            except Exception:
+                text = ""
+
+            if text:
+                normalized = text.lower()
+
+                if normalized == CAPABILITIES_QUERY:
+                    capabilities = await get_all_capabilities()
+                    lines = []
+                    for url, summary in capabilities.items():
+                        lines.append(f"{url}\n{summary}")
+                    return ["\n\n".join(lines) if lines else "No connected agent capabilities available."]
+
+                target_url = 'mem://text'
+                if "translate" in normalized or "translation" in normalized:
+                    target_url = 'mem://translate'
+
+                if target_url not in sessions:
+                    try:
+                        await connect_to_server(target_url)
+                    except Exception as exc:
+                        logger.error(f"[{self.name}] Failed to connect to {target_url}: {exc}")
+                        return [f"Error: Could not connect to {target_url}: {exc}"]
+
+                try:
+                    response = await send_to_server(target_url, text)
+                    if isinstance(response, dict):
+                        content = response.get('content')
+                        extras = []
+                        for submsg in response.get('submessages') or []:
+                            if isinstance(submsg, dict):
+                                extra = submsg.get('content')
+                                if isinstance(extra, str) and extra.strip() and extra != content:
+                                    extras.append(extra)
+                        if isinstance(content, str) and content.strip():
+                            return [content, *extras] if extras else [content]
+                    return [str(response)]
+                except Exception as exc:
+                    logger.exception(f"[{self.name}] Error routing text request to {target_url}: {exc}")
+                    return [f"Error processing text request: {exc}"]
 
             return await super().process_nlip(nlip_msg)
 
