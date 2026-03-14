@@ -79,10 +79,12 @@ services:
         SERVICE_ROLE: text
     command:
       ["uvicorn", "app.servers.text_server:app", "--host", "0.0.0.0", "--port", "8027"]
+    models:
+      llm:
+        endpoint_var: OLLAMA_URL
+        model_var: OLLAMA_MODEL
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-dockermodelrunner}
-      OLLAMA_URL: http://172.17.0.1:12434/v1
-      OLLAMA_TEXT_MODEL: qwen2.5:7b
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
     expose:
       - 8027
