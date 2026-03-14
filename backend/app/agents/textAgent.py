@@ -14,8 +14,17 @@ from .base import API_BASE, MODEL
 logger = logging.getLogger("NLIP")
 
 
-TEXT_TOOL_MODEL = os.getenv("TEXT_TOOL_MODEL", MODEL)
-TEXT_TOOL_API_BASE = os.getenv("TEXT_TOOL_API_BASE", API_BASE or "").rstrip("/") or None
+_OLLAMA_URL = (os.getenv("OLLAMA_URL") or "").rstrip("/")
+_OLLAMA_TEXT_MODEL = (os.getenv("OLLAMA_TEXT_MODEL") or "").strip()
+
+TEXT_TOOL_MODEL = os.getenv("TEXT_TOOL_MODEL") or (
+    f"openai/{_OLLAMA_TEXT_MODEL}" if _OLLAMA_TEXT_MODEL else MODEL
+)
+TEXT_TOOL_API_BASE = (
+    os.getenv("TEXT_TOOL_API_BASE")
+    or (_OLLAMA_URL if _OLLAMA_URL else None)
+    or (API_BASE.rstrip("/") if API_BASE else None)
+)
 TEXT_TOOL_SYSTEM = (
     "You are an NLIP text assistant. Provide concise yet complete answers, cite facts when "
     "possible, and clearly note if critical information is missing."
