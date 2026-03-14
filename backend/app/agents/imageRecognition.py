@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import base64
-import asyncio
 import os
 from typing import Optional
 
@@ -15,8 +14,8 @@ from .base import MODEL
 from app._logging import logger
 
 
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
-OLLAMA_IMAGE_MODEL = os.getenv("OLLAMA_IMAGE_MODEL", "llava")
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+OLLAMA_IMAGE_MODEL = os.getenv("OLLAMA_IMAGE_MODEL") or os.getenv("OLLAMA_MODEL", "llava")
 OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "60.0"))
 
 
@@ -46,7 +45,10 @@ async def describe_image(image_base64: str, prompt: Optional[str] = None) -> str
         "stream": False,
     }
 
-    url = f"{OLLAMA_URL}/api/generate"
+    # Docker Model Runner may inject an OpenAI-style endpoint ending in /v1.
+    # Ollama image generation API is rooted at /api/generate.
+    base_url = OLLAMA_URL[:-3] if OLLAMA_URL.endswith("/v1") else OLLAMA_URL
+    url = f"{base_url.rstrip('/')}/api/generate"
     logger.debug("Image agent calling Llava", extra={"url": url, "model": OLLAMA_IMAGE_MODEL})
 
     async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
