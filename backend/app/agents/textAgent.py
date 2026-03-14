@@ -79,3 +79,7 @@ class TextNlipAgent(NlipAgent):
             "You can draft, edit, and reason about natural language using the `generate_text` tool, "
             "which calls the configured local model endpoint for generation."
         )
+
+    async def process_query(self, query: str) -> list[str]:
+        response = await generate_text(query)
+        return [response]
