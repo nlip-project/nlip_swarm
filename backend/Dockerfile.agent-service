@@ -10,7 +10,8 @@ WORKDIR /app
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=bind,source=requirements.txt,target=requirements.txt \
-    python -m pip install -r requirements.txt
+    sh -lc 'grep -Ev "^(torch==|openai-whisper)" requirements.txt > /tmp/requirements.agent.txt && \
+    python -m pip install --no-cache-dir -r /tmp/requirements.agent.txt'
 
 FROM base AS pruner
 
