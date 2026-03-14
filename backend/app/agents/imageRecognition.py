@@ -14,7 +14,7 @@ from app._logging import logger
 
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_IMAGE_MODEL = os.getenv("OLLAMA_IMAGE_MODEL") or os.getenv("OLLAMA_MODEL", "llava")
+OLLAMA_IMAGE_MODEL = os.getenv("OLLAMA_IMAGE_MODEL") or os.getenv("OLLAMA_MODEL", "ai/llava")
 OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "60.0"))
 LLM_MODEL = f"openai/{os.getenv('OLLAMA_MODEL', OLLAMA_IMAGE_MODEL)}"
 LLM_API_BASE = OLLAMA_URL.rstrip("/")
