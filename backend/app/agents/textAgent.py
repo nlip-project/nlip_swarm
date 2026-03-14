@@ -1,4 +1,4 @@
-"""Text agent with tools backed by the hosted Cerebras model."""
+"""Text agent with tools backed by the configured local model endpoint."""
 
 from __future__ import annotations
 
@@ -9,12 +9,13 @@ from typing import Optional, Any, cast
 from litellm import acompletion
 
 from .nlip_agent import NlipAgent
-from .base import MODEL
+from .base import API_BASE, MODEL
 
 logger = logging.getLogger("NLIP")
 
 
 TEXT_TOOL_MODEL = os.getenv("TEXT_TOOL_MODEL", MODEL)
+TEXT_TOOL_API_BASE = os.getenv("TEXT_TOOL_API_BASE", API_BASE or "").rstrip("/") or None
 TEXT_TOOL_SYSTEM = (
     "You are an NLIP text assistant. Provide concise yet complete answers, cite facts when "
     "possible, and clearly note if critical information is missing."
@@ -22,7 +23,7 @@ TEXT_TOOL_SYSTEM = (
 
 
 async def generate_text(prompt: str, context: Optional[str] = None) -> str:
-    """Generate a response with the hosted Cerebras model instead of local Ollama."""
+    """Generate a response with the configured local LLM endpoint."""
 
     segments = [prompt.strip()]
     if context:
@@ -34,10 +35,14 @@ async def generate_text(prompt: str, context: Optional[str] = None) -> str:
     ]
 
     try:
-        response = await acompletion(model=TEXT_TOOL_MODEL, messages=messages)
+        response = await acompletion(
+            model=TEXT_TOOL_MODEL,
+            messages=messages,
+            api_base=TEXT_TOOL_API_BASE,
+        )
     except Exception as exc:  # pragma: no cover - upstream outages
-        logger.exception("Cerebras text tool request failed: %s", exc)
-        return "Unable to generate text because the Cerebras request failed."
+        logger.exception("Text tool request failed: %s", exc)
+        return "Unable to generate text because the local model request failed."
 
     response_message = cast(Any, response).choices[0].message
     content = getattr(response_message, "content", None)
@@ -54,7 +59,7 @@ async def generate_text(prompt: str, context: Optional[str] = None) -> str:
         content = " ".join(text_parts)
 
     if not isinstance(content, str):
-        return "The Cerebras model returned an unexpected payload."
+        return "The local model returned an unexpected payload."
 
     return content.strip()
 
@@ -72,5 +77,5 @@ class TextNlipAgent(NlipAgent):
 
         self.add_instruction(
             "You can draft, edit, and reason about natural language using the `generate_text` tool, "
-            "which calls a hosted Cerebras model for higher quality results."
+            "which calls the configured local model endpoint for generation."
         )

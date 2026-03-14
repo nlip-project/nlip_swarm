@@ -11,9 +11,6 @@ import httpx
 
 from .nlip_agent import NlipAgent
 from .base import MODEL
-#MODEL = "openai/gpt-4o-mini"
-#MODEL = "ollama_chat/llama3.2:3b"
-MODEL = "cerebras/llama3.3-70b"
 
 from app._logging import logger
 
