@@ -2,6 +2,7 @@ import { ConversationHeader } from "@/components/chat/ConversationHeader";
 import { ConversationList } from "@/components/chat/ConversationList";
 import { MessageComposer } from "@/components/chat/MessageComposer";
 import { SelectedAttachment } from "@/components/chat/SelectedAttachment";
+import { TypingIndicator } from "@/components/chat/TypingIndicator";
 import { ThemedView } from "@/components/themed-view";
 import { Drawout } from "@/components/ui/drawout";
 import { API_BASE } from "@/constants/env";
@@ -306,7 +307,10 @@ export default function TabThreeScreen() {
     >
       <View style={styles.flex1} pointerEvents="box-none">
         <ThemedView style={styles.container}>
-          <View pointerEvents="none" style={[styles.topSpacer, { height: topSpacerHeight }]} />
+          <View
+            pointerEvents="none"
+            style={[styles.topSpacer, { height: topSpacerHeight, backgroundColor: colors.background }]}
+          />
           <Drawout
             clearChat={clearChat}
             apiBase={API_BASE}
@@ -361,6 +365,8 @@ export default function TabThreeScreen() {
             onRemoveFile={clearFileSelection}
           />
 
+          {isSending ? <TypingIndicator colors={colors} /> : null}
+
           <MessageComposer
             text={text}
             onChangeText={setText}
@@ -388,7 +394,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   topSpacer: {
-    backgroundColor: "#ffffff",
     width: "100%",
   },
 });

@@ -1,11 +1,12 @@
 import { ThemedText } from "@/components/themed-text";
 import { API_BASE } from "@/constants/env";
 import { Colors } from "@/constants/theme";
+import { useColorScheme } from "@/hooks/use-color-scheme";
+import { getContrastingTextColor } from "@/lib/color";
 import React, { ReactNode, useEffect, useState } from "react";
 import {
   Alert,
   Animated,
-  Button,
   Dimensions,
   LayoutChangeEvent,
   Pressable,
@@ -36,6 +37,9 @@ export function Drawout({
   renderTrigger,
   onOpenChange,
 }: DrawoutProps) {
+  const theme = useColorScheme() ?? "light";
+  const colors = Colors[theme];
+  const newConversationTextColor = getContrastingTextColor(colors.tint, colors.buttonText, colors.text);
   const [open, setOpen] = useState(false);
   const [layerVisible, setLayerVisible] = useState(false);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -120,6 +124,10 @@ export function Drawout({
       <TouchableOpacity
         style={[
           styles.hamburger,
+          {
+            shadowColor: colors.icon,
+            backgroundColor: theme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)",
+          },
           triggerPosition ? { top: triggerPosition.top, left: triggerPosition.left } : null,
         ]}
         onPress={toggleOpen}
@@ -127,9 +135,9 @@ export function Drawout({
         accessibilityLabel="Open drawout panel"
         onLayout={(event: LayoutChangeEvent) => onTriggerLayout?.(event.nativeEvent.layout)}
       >
-        <View style={styles.line} />
-        <View style={styles.line} />
-        <View style={styles.line} />
+        <View style={[styles.line, { backgroundColor: colors.icon }]} />
+        <View style={[styles.line, { backgroundColor: colors.icon }]} />
+        <View style={[styles.line, { backgroundColor: colors.icon }]} />
       </TouchableOpacity>
     </View>
   );
@@ -144,9 +152,12 @@ export function Drawout({
               style={[
                 styles.panel,
                 {
+                  backgroundColor: colors.background,
+                  borderColor: colors.icon,
                   width: panelWidth,
                   transform: [{ translateX: slideAnim }],
                   shadowOpacity: open ? 0.18 : 0,
+                  shadowColor: colors.icon,
                 },
               ]}
             >
@@ -158,7 +169,7 @@ export function Drawout({
                     </View>
                   ) : null}
                   {conversations.map((c) => (
-                    <View key={c.id} style={styles.convoRowRow}>
+                    <View key={c.id} style={[styles.convoRowRow, { borderColor: colors.icon }]}>
                       <TouchableOpacity
                         style={styles.convoRowTouchable}
                         onPress={() => {
@@ -170,7 +181,7 @@ export function Drawout({
                         <View style={{ paddingVertical: 8 }}>
                           <ThemedText>{c.title ?? `Conversation ${c.id.slice(0, 6)}`}</ThemedText>
                           {c.last_activity_at ? (
-                            <ThemedText style={{ fontSize: 12, color: Colors.light.icon }}>
+                            <ThemedText style={{ fontSize: 12, color: colors.icon }}>
                               {new Date(c.last_activity_at).toLocaleString()}
                             </ThemedText>
                           ) : null}
@@ -187,12 +198,21 @@ export function Drawout({
                   ))}
                   {loading ? (
                     <View style={{ paddingVertical: 8 }}>
-                      <Button title="Loading..." onPress={() => {}} />
+                      <ThemedText style={{ color: colors.icon }}>Loading conversations...</ThemedText>
                     </View>
                   ) : null}
                 </ScrollView>
                 <View style={styles.footerContainer} pointerEvents="box-none">
-                  <Button title="New Conversation" onPress={startNewConversation} />
+                  <TouchableOpacity
+                    onPress={startNewConversation}
+                    style={[styles.newConversationButton, { backgroundColor: colors.tint }]}
+                    accessibilityLabel="Start a new conversation"
+                    activeOpacity={0.85}
+                  >
+                    <ThemedText style={[styles.newConversationButtonText, { color: newConversationTextColor }]}>
+                      New Conversation
+                    </ThemedText>
+                  </TouchableOpacity>
                 </View>
               </View>
             </Animated.View>
@@ -220,8 +240,6 @@ const styles = StyleSheet.create({
     gap: 3,
     padding: 10,
     borderRadius: 8,
-    backgroundColor: "rgba(255,255,255,0.01)",
-    shadowColor: "#000",
     shadowOpacity: 0.08,
     shadowRadius: 4,
     elevation: 2,
@@ -229,19 +247,15 @@ const styles = StyleSheet.create({
   line: {
     width: 24,
     height: 3,
-    backgroundColor: Colors.light.icon,
     borderRadius: 2,
     marginVertical: 2,
   },
   panel: {
-    backgroundColor: Colors.light.background,
     borderTopRightRadius: 18,
     borderBottomRightRadius: 18,
     borderRightWidth: 1,
-    borderColor: Colors.light.icon,
     paddingTop: 60,
     paddingHorizontal: 18,
-    shadowColor: "#000",
     shadowOffset: { width: 2, height: 0 },
     shadowRadius: 12,
     elevation: 8,
@@ -255,7 +269,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     borderBottomWidth: 1,
-    borderColor: Colors.light.icon,
     paddingVertical: 6,
   },
   convoRowTouchable: {
@@ -270,6 +283,18 @@ const styles = StyleSheet.create({
   },
   archiveButtonText: {
     color: "#d9534f",
+    fontWeight: "600",
+  },
+  newConversationButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    minWidth: 172,
+    alignItems: "center",
+  },
+  newConversationButtonText: {
+    fontSize: 16,
+    lineHeight: 20,
     fontWeight: "600",
   },
   footerContainer: {
