@@ -6,7 +6,7 @@
 import { Platform } from 'react-native';
 
 const tintColorLight = 'rgb(14, 122, 254)';
-const tintColorDark = '#fff';
+const tintColorDark = '#4BA3FF';
 
 export const Colors = {
   light: {
@@ -26,17 +26,17 @@ export const Colors = {
   },
   dark: {
     text: '#ECEDEE',
-    buttonText: '#000000',
+    buttonText: '#FFFFFF',
     link: '#1B95E0',
-    background: '#151718',
+    background: '#121416',
     tint: tintColorDark,
     icon: '#9BA1A6',
     tabIconDefault: '#9BA1A6',
     tabIconSelected: tintColorDark,
     // Chat/message tokens
-    messageMeBg: '#2a3c29',
-    messageMeText: '#ECEDEE',
-    messageOtherBg: '#222222',
+    messageMeBg: '#1F5FA8',
+    messageMeText: '#FFFFFF',
+    messageOtherBg: '#1E2328',
     messageOtherText: '#ECEDEE',
   },
 };

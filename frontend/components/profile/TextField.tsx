@@ -26,6 +26,7 @@ export function ProfileTextField({
       <ThemedText>{label}</ThemedText>
       <TextInput
         placeholderTextColor={placeholderColor}
+        keyboardAppearance={theme}
         style={[
           styles.input,
           {

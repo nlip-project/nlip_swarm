@@ -8,7 +8,9 @@ import 'react-native-reanimated';
 import { navigate, setRouter } from '../lib/navigation';
 
 import { API_BASE } from '@/constants/env';
+import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Platform } from 'react-native';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -16,6 +18,7 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  const theme = colorScheme === 'dark' ? 'dark' : 'light';
   const router = useRouter();
   useEffect(() => {
     setRouter(router);
@@ -87,12 +90,28 @@ export default function RootLayout() {
     };
   }, []);
 
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') {
+      return;
+    }
+
+    const backgroundColor = Colors[theme].background;
+    const textColor = Colors[theme].text;
+    document.documentElement.style.colorScheme = theme;
+    document.documentElement.style.backgroundColor = backgroundColor;
+    document.body.style.backgroundColor = backgroundColor;
+    document.body.style.color = textColor;
+  }, [theme]);
+
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
+      <Stack screenOptions={{ contentStyle: { backgroundColor: Colors[theme].background } }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       </Stack>
-      <StatusBar style="auto" />
+      <StatusBar
+        style={theme === 'dark' ? 'light' : 'dark'}
+        backgroundColor={Colors[theme].background}
+      />
     </ThemeProvider>
   );
 }

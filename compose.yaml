@@ -25,6 +25,8 @@ services:
         SERVICE_ROLE: coordinator
     command:
       ["uvicorn", "app.servers.coordinator_server:app", "--host", "0.0.0.0", "--port", "8024"]
+    env_file:
+      - ./backend/app/.env
     ports:
       - 8024:8024
     models:
