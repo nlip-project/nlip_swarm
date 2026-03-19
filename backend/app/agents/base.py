@@ -66,6 +66,8 @@ class Agent:
         for fn in (tools or []):
             self.add_tool(fn)
 
+        self._base_messages = list(self.messages)
+
     def _trel(self):
         return time.time() - self.tstart
 
@@ -206,8 +208,11 @@ class Agent:
         return self.final_text + self.tool_outputs[-1:]
 
     async def process_query(self, query: str) -> list[str]:
+        # Reset per-request state to keep prompt size bounded.
         self.final_text = []
         self.tool_outputs = []
+        self._last_nlip_json = None
+        self.messages = list(self._base_messages)
         self.messages.append({
             "role": "user",
             "content": query
@@ -215,8 +220,10 @@ class Agent:
         return await self._drive_llm()
     
     async def process_nlip(self, nlip_msg: Any) -> list[str]:
+        # Reset per-request state to keep prompt size bounded.
         self.final_text = []
         self.tool_outputs = []
+        self.messages = list(self._base_messages)
 
         try:
             nlip_json = nlip_msg.to_dict()
@@ -226,10 +233,23 @@ class Agent:
             except (AttributeError, TypeError) as e:
                 raise RuntimeError(f"Could not convert NLIP_Message to dict: {e}")
         self._last_nlip_json = nlip_json
-        self.messages.append({
-            "role": "user",
-            "content": "ORIGINAL_NLIP_JSON:\n" +json.dumps(nlip_json, ensure_ascii=False)
-        })
+
+        # Keep prompts small for plain-text-only requests to avoid blowing tiny context windows.
+        text_only = False
+        try:
+            text_only = bool((nlip_json.get("format") or "").lower().startswith("text")) and not nlip_json.get("submessages")
+        except Exception:
+            text_only = False
+
+        if not text_only:
+            json_payload = json.dumps(nlip_json, ensure_ascii=False)
+            # Hard cap the JSON block length to reduce token usage for large payloads.
+            if len(json_payload) > 2000:
+                json_payload = json_payload[:2000] + "... (truncated)"
+            self.messages.append({
+                "role": "user",
+                "content": "ORIGINAL_NLIP_JSON:\n" + json_payload
+            })
 
         text = ""
         try:

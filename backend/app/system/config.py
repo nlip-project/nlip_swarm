@@ -1,17 +1,24 @@
+import os
+
+
+def _env_url(key: str, default: str) -> str:
+    raw = os.getenv(key, default)
+    return raw.rstrip("/")
+
+
 MOUNT_URLS = {
-    "coord": "http://0.0.0.0:8024/",
-    "basic": "mem://basic/",
-    "translate": "mem://translate/",
-    "text": "mem://text/",
-    "sound": "mem://sound/",
-    "image": "mem://image/",
+    "coord": _env_url("NLIP_COORD_URL", "http://0.0.0.0:8024"),
+    # Default to container-to-container HTTP endpoints inside Docker. Override with
+    # NLIP_*_URL env vars if you run the agents in-process and want in-memory ASGI
+    # routing (mem://...).
+    "basic": _env_url("NLIP_BASIC_URL", "http://basic:8025"),
+    "translate": _env_url("NLIP_TRANSLATE_URL", "http://translate:8026"),
+    "text": _env_url("NLIP_TEXT_URL", "http://text:8027"),
+    "sound": _env_url("NLIP_SOUND_URL", "http://sound:8029"),
+    "image": _env_url("NLIP_IMAGE_URL", "http://image:8028"),
 }
 
 COORDINATOR_URL = MOUNT_URLS["coord"]
 
 # All non-coordinator endpoints derived from MOUNT_URLS
-DEFAULT_AGENT_ENDPOINTS = [
-    url.rstrip("/")
-    for name, url in MOUNT_URLS.items()
-    if name != "coord"
-]
+DEFAULT_AGENT_ENDPOINTS = [url for name, url in MOUNT_URLS.items() if name != "coord"]

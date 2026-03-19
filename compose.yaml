@@ -4,20 +4,30 @@ services:
       context: ./frontend
     env_file:
       - ./frontend/.env
-    tty: true
-    stdin_open: true
+    environment:
+      EXPO_PUBLIC_API_BASE: ${EXPO_PUBLIC_API_BASE:-http://host.docker.internal:8024}
+      EXPO_DEVTOOLS_LISTEN_ADDRESS: 0.0.0.0
+      CI: "1"
+    command: ["npm", "run", "start", "--", "--tunnel"]
     ports:
       - 8081:8081
       - 19000:19000
       - 19001:19001
       - 19002:19002
-  backend:
+    depends_on:
+      - coordinator
+
+  coordinator:
     build:
       context: ./backend
+      dockerfile: Dockerfile.agent-service
+      args:
+        SERVICE_ROLE: coordinator
+    command:
+      ["uvicorn", "app.servers.coordinator_server:app", "--host", "0.0.0.0", "--port", "8024"]
     env_file:
       - ./backend/app/.env
     ports:
-      # Backend listens on 8024; expose same port to host so mobile can reach it
       - 8024:8024
     models:
       llm:
@@ -31,6 +41,108 @@ services:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
     depends_on:
       - db
+      - basic
+      - translate
+      - text
+      - image
+      - sound
+
+  basic:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.agent-service
+      args:
+        SERVICE_ROLE: basic
+    command:
+      ["uvicorn", "app.servers.basic_server:app", "--host", "0.0.0.0", "--port", "8025"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
+    expose:
+      - 8025
+
+  translate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.agent-service
+      args:
+        SERVICE_ROLE: translate
+    command:
+      ["uvicorn", "app.servers.translate_server:app", "--host", "0.0.0.0", "--port", "8026"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
+    expose:
+      - 8026
+
+  text:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.agent-service
+      args:
+        SERVICE_ROLE: text
+    command:
+      ["uvicorn", "app.servers.text_server:app", "--host", "0.0.0.0", "--port", "8027"]
+    models:
+      llm:
+        endpoint_var: OLLAMA_URL
+        model_var: OLLAMA_MODEL
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-dockermodelrunner}
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
+    expose:
+      - 8027
+
+  image:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.agent-service
+      args:
+        SERVICE_ROLE: image
+    command:
+      ["uvicorn", "app.servers.image_server:app", "--host", "0.0.0.0", "--port", "8028"]
+    models:
+      image_llm:
+        endpoint_var: OLLAMA_URL
+        model_var: OLLAMA_MODEL
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-dockermodelrunner}
+      OLLAMA_IMAGE_MODEL: ai/ministral3
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
+    expose:
+      - 8028
+
+  sound:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.agent-service
+      args:
+        SERVICE_ROLE: sound
+    command:
+      ["uvicorn", "app.servers.sound_server:app", "--host", "0.0.0.0", "--port", "8029"]
+    environment:
+      WHISPER_URL: http://whisper:9002
+      WHISPER_MODEL: ${WHISPER_MODEL:-large-v3}
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
+    expose:
+      - 8029
+    depends_on:
+      - whisper
+
+  whisper:
+    build:
+      context: ./backend
+    command:
+      [
+        "python",
+        "scripts/whisper_server.py",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "9002",
+        "--model",
+        "${WHISPER_MODEL:-large-v3}"
+      ]
+    expose:
+      - 9002
 
   db:
     image: postgres:15
@@ -50,8 +162,32 @@ volumes:
 
 models:
   llm:
-    model: ai/llama3.1:8B-Q4_K_M
-    context_size: 2048
+    model: ai/llama3.2:3B-Q4_0
+    context_size: 4096
+    runtime_flags:
+      - "--n-gpu-layers"
+      - "${DMR_N_GPU_LAYERS:-0}"
+      - "--main-gpu"
+      - "${DMR_MAIN_GPU:-0}"
+      - "--split-mode"
+      - "${DMR_SPLIT_MODE:-layer}"
   translation:
     model: ai/llama3.2:3B-Q4_0
-    context_size: 1024
+    context_size: 4096
+    runtime_flags:
+      - "--n-gpu-layers"
+      - "${DMR_N_GPU_LAYERS:-0}"
+      - "--main-gpu"
+      - "${DMR_MAIN_GPU:-0}"
+      - "--split-mode"
+      - "${DMR_SPLIT_MODE:-layer}"
+  image_llm:
+    model: ai/ministral3
+    context_size: 4096
+    runtime_flags:
+      - "--n-gpu-layers"
+      - "${DMR_N_GPU_LAYERS:-0}"
+      - "--main-gpu"
+      - "${DMR_MAIN_GPU:-0}"
+      - "--split-mode"
+      - "${DMR_SPLIT_MODE:-layer}"

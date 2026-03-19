@@ -25,10 +25,16 @@ from nlip_sdk.nlip import NLIP_Factory, NLIP_Message
 from app.agents.base import MODEL as DEFAULT_MODEL
 from app.agents.nlip_agent import NlipAgent
 from app.http_client.nlip_async_client import NlipAsyncClient
-from app.agents.imageRecognition import describe_image
+from app.system.config import MOUNT_URLS
 
 sessions = {}
 from app._logging import logger
+
+CAPABILITIES_QUERY = "what are your nlip capabilities?"
+SOUND_URL = MOUNT_URLS.get("sound", "http://sound:8029")
+TEXT_URL = MOUNT_URLS.get("text", "http://text:8027")
+TRANSLATE_URL = MOUNT_URLS.get("translate", "http://translate:8026")
+IMAGE_URL = MOUNT_URLS.get("image", "http://image:8028")
 
 _OLLAMA_URL   = os.getenv("OLLAMA_URL")
 _OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
@@ -56,9 +62,13 @@ async def connect_to_server(url: str):
     if not netloc:
         return "Exception: Request URL is missing a host."
 
+    allowed_urls = {f"{urlparse(v).scheme}://{urlparse(v).netloc}" for v in MOUNT_URLS.values()}
+    hashkey = f"{scheme}://{netloc}"
+    if hashkey not in allowed_urls:
+        return f"Exception: Host '{hashkey}' is not in the allowed agent list."
+
     client = NlipAsyncClient.create_from_url(f"{scheme}://{netloc}/nlip")
 
-    hashkey = f"{scheme}://{netloc}"
     sessions[hashkey] = client
 
     logger.info(f"Saved {netloc} with client {client}")
@@ -171,7 +181,7 @@ async def route_by_format(message: dict) -> dict:
 
     if format_info['has_image']:
         return {
-            'recommended_url': 'mem://image',
+            'recommended_url': MOUNT_URLS.get('image', 'http://image:8028'),
             'agent_name': 'Image',
             'confidence': 'high',
             'reason': 'Message contains binary image data'
@@ -179,7 +189,7 @@ async def route_by_format(message: dict) -> dict:
 
     if format_info['has_audio']:
         return {
-            'recommended_url': 'mem://sound',
+            'recommended_url': MOUNT_URLS.get('sound', 'http://sound:8029'),
             'agent_name': 'Sound',
             'confidence': 'high',
             'reason': 'Message contains binary audio data'
@@ -236,10 +246,10 @@ AVAILABLE SERVERS
 These servers are already connected and ready to use:
 
 - mem://basic      — general NLP tasks (entity recognition, sentiment analysis, etc.)
-- mem://translate  — language translation
-- mem://text       — text processing and manipulation
-- mem://sound      — audio processing
-- mem://image      — image recognition and processing
+- http://translate:8026  — language translation
+- http://text:8027       — text processing and manipulation
+- http://sound:8029      — audio processing
+- http://image:8028      — image recognition and processing
 
 IMPORTANT RULES
 - ONLY use the server URLs listed above.
@@ -250,19 +260,19 @@ IMPORTANT RULES
 HOW TO HANDLE REQUESTS
 
 1. If the user asks for translation:
-   → send the request to **mem://translate**
+    → send the request to **http://translate:8026**
 
 2. If the user asks for general NLP analysis:
    → send the request to **mem://basic**
 
 3. If the user asks for text processing:
-   → send the request to **mem://text**
+    → send the request to **http://text:8027**
 
 4. If the user asks for audio processing:
-   → send the request to **mem://sound**
+    → send the request to **http://sound:8029**
 
 5. If the user asks for image processing:
-   → send the request to **mem://image**
+    → send the request to **http://image:8028**
 
 TOOLS
 You have three tools:
@@ -329,26 +339,28 @@ class CoordinatorNlipAgent(NlipAgent):
             format_info = inspect_message_formats(nlip_msg)
 
             if format_info['has_image']:
-                image_data = extract_image_from_message(nlip_msg)
+                url = IMAGE_URL
 
-                if not image_data:
-                    logger.warning(f"[{self.name}] Image format detected but no image data found")
-                    return ["No image data found in message"]
+                if url not in sessions:
+                    try:
+                        await connect_to_server(url)
+                    except Exception as e:
+                        logger.error(f"[{self.name}] Failed to connect to {url}: {e}")
+                        return [f"Error: Could not connect to image server: {e}"]
+
+                nlip_dict = nlip_msg.to_dict() if hasattr(nlip_msg, 'to_dict') else nlip_msg.model_dump()
 
                 try:
-                    text_prompt = nlip_msg.extract_text()
-                except Exception:
-                    text_prompt = None
-
-                try:
-                    result = await describe_image(image_data, text_prompt)
-                    return [result]
+                    response = await send_to_server(url, nlip_dict)
+                    if isinstance(response, dict) and 'content' in response:
+                        return [response['content']]
+                    return [str(response)]
                 except Exception as exc:
-                    logger.exception(f"[{self.name}] Error calling describe_image: {exc}")
+                    logger.exception(f"[{self.name}] Error from image server: {exc}")
                     return [f"Error processing image: {exc}"]
 
             if format_info['has_audio']:
-                url = 'mem://sound'
+                url = SOUND_URL
 
                 if url not in sessions:
                     try:
@@ -367,6 +379,50 @@ class CoordinatorNlipAgent(NlipAgent):
                 except Exception as exc:
                     logger.exception(f"[{self.name}] Error from sound server: {exc}")
                     return [f"Error processing audio: {exc}"]
+
+            text = ""
+            try:
+                text = (nlip_msg.extract_text() or "").strip()
+            except Exception:
+                text = ""
+
+            if text:
+                normalized = text.lower()
+
+                if normalized == CAPABILITIES_QUERY:
+                    capabilities = await get_all_capabilities()
+                    lines = []
+                    for url, summary in capabilities.items():
+                        lines.append(f"{url}\n{summary}")
+                    return ["\n\n".join(lines) if lines else "No connected agent capabilities available."]
+
+                target_url = TEXT_URL
+                if "translate" in normalized or "translation" in normalized:
+                    target_url = TRANSLATE_URL
+
+                if target_url not in sessions:
+                    try:
+                        await connect_to_server(target_url)
+                    except Exception as exc:
+                        logger.error(f"[{self.name}] Failed to connect to {target_url}: {exc}")
+                        return [f"Error: Could not connect to {target_url}: {exc}"]
+
+                try:
+                    response = await send_to_server(target_url, text)
+                    if isinstance(response, dict):
+                        content = response.get('content')
+                        extras = []
+                        for submsg in response.get('submessages') or []:
+                            if isinstance(submsg, dict):
+                                extra = submsg.get('content')
+                                if isinstance(extra, str) and extra.strip() and extra != content:
+                                    extras.append(extra)
+                        if isinstance(content, str) and content.strip():
+                            return [content, *extras] if extras else [content]
+                    return [str(response)]
+                except Exception as exc:
+                    logger.exception(f"[{self.name}] Error routing text request to {target_url}: {exc}")
+                    return [f"Error processing text request: {exc}"]
 
             return await super().process_nlip(nlip_msg)
 
