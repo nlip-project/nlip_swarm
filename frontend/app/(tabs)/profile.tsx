@@ -318,6 +318,7 @@ async function handleLogout() {
                   onSave={handleSave}
                   onLogout={handleLogout}
                   tintColor={c.tint}
+                  buttonTextColor={c.buttonText}
                   disabled={isProcessingPhoto}
                 />
               </View>

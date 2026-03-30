@@ -40,6 +40,7 @@ export function PhoneField({
             onChangeText={onCountryCodeChange}
             placeholder="1"
             placeholderTextColor={placeholderColor}
+            keyboardAppearance={theme}
             style={[styles.codeInput, { color: colors.text }]}
             keyboardType="number-pad"
             maxLength={3}
@@ -51,6 +52,7 @@ export function PhoneField({
           onChangeText={onPhoneNumberChange}
           placeholder="(123) 456-7890"
           placeholderTextColor={placeholderColor}
+          keyboardAppearance={theme}
           style={[
             styles.phoneInput,
             {

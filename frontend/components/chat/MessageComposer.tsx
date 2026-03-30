@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { Colors } from '@/constants/theme';
+import { getContrastingTextColor } from '@/lib/color';
 
 type ThemeShape = typeof Colors.light;
 
@@ -26,6 +27,8 @@ export function MessageComposer({
   colors,
   theme,
 }: MessageComposerProps) {
+  const sendTextColor = getContrastingTextColor(colors.tint, colors.buttonText, colors.text);
+
   return (
     <View
       style={[
@@ -46,6 +49,7 @@ export function MessageComposer({
         onChangeText={onChangeText}
         placeholder="Message"
         style={[styles.textInput, { color: colors.text }]}
+        keyboardAppearance={theme}
         placeholderTextColor={
           theme === 'dark' ? Colors.dark.icon : Colors.light.icon
         }
@@ -59,7 +63,7 @@ export function MessageComposer({
         onPress={onSend}
         accessibilityLabel="Send message"
       >
-        <ThemedText style={{ color: colors.buttonText }}>
+        <ThemedText style={[styles.sendButtonText, { color: sendTextColor }]}>
           {isSending ? '...' : 'Send'}
         </ThemedText>
       </TouchableOpacity>
@@ -101,5 +105,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     marginLeft: 6,
     borderRadius: 16,
+  },
+  sendButtonText: {
+    fontSize: 15,
+    lineHeight: 18,
+    fontWeight: '600',
   },
 });

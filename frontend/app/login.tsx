@@ -1,14 +1,20 @@
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { API_BASE } from '@/constants/env';
+import { Colors } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { getContrastingTextColor } from '@/lib/color';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack, useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, Button, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { fetchAndPersistUserProfile, persistUserLocally, StoredUser } from '@/lib/session';
 
 export default function Login() {
   const router = useRouter();
+  const theme = useColorScheme();
+  const colors = Colors[theme];
+  const submitTextColor = getContrastingTextColor(colors.tint, colors.buttonText, colors.text);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -66,26 +72,59 @@ export default function Login() {
       <ThemedView style={styles.container}>
         <ThemedText style={styles.title}>Login</ThemedText>
       <TextInput
-        style={styles.input}
+        style={[
+          styles.input,
+          { color: colors.text, borderColor: colors.icon, backgroundColor: colors.background },
+        ]}
         placeholder="Email"
+        placeholderTextColor={colors.icon}
+        selectionColor={colors.tint}
+        cursorColor={colors.tint}
+        keyboardAppearance={theme}
         autoCapitalize="none"
+        autoCorrect={false}
+        spellCheck={false}
+        autoComplete="email"
+        textContentType="emailAddress"
         keyboardType="email-address"
         value={email}
         onChangeText={setEmail}
       />
       <TextInput
-        style={styles.input}
+        style={[
+          styles.input,
+          { color: colors.text, borderColor: colors.icon, backgroundColor: colors.background },
+        ]}
         placeholder="Password"
+        placeholderTextColor={colors.icon}
+        selectionColor={colors.tint}
+        cursorColor={colors.tint}
+        keyboardAppearance={theme}
+        autoCapitalize="none"
+        autoCorrect={false}
+        spellCheck={false}
+        autoComplete="password"
+        textContentType="password"
         secureTextEntry
         value={password}
         onChangeText={setPassword}
       />
-      <Button title={loading ? 'Logging in...' : 'Login'} onPress={handleLogin} disabled={loading} />
+      <TouchableOpacity
+        style={[styles.submitButton, { backgroundColor: colors.tint, opacity: loading ? 0.7 : 1 }]}
+        onPress={handleLogin}
+        disabled={loading}
+        accessibilityLabel="Log in"
+        activeOpacity={0.85}
+      >
+        <ThemedText style={[styles.submitButtonText, { color: submitTextColor }]}>
+          {loading ? 'Logging in...' : 'Login'}
+        </ThemedText>
+      </TouchableOpacity>
 
         <View style={styles.row}>
           <ThemedText>Don&apos;t have an account?</ThemedText>
           <TouchableOpacity onPress={() => router.push('/signup')}>
-            <ThemedText style={styles.link}> Sign up</ThemedText>
+            <ThemedText style={[styles.link, { color: colors.link }]}> Sign up</ThemedText>
           </TouchableOpacity>
         </View>
       </ThemedView>
@@ -97,6 +136,17 @@ const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, justifyContent: 'center' },
   title: { fontSize: 24, fontWeight: '600', marginBottom: 16, textAlign: 'center' },
   input: { borderWidth: 1, borderColor: '#ccc', padding: 12, marginBottom: 12, borderRadius: 8 },
+  submitButton: {
+    marginTop: 4,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  submitButtonText: {
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: '600',
+  },
   row: { flexDirection: 'row', justifyContent: 'center', marginTop: 12 },
-  link: { color: '#007AFF' },
+  link: {},
 });

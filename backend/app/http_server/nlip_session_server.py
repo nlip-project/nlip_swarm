@@ -1,6 +1,8 @@
 import asyncio
 import logging
+import os
 from fastapi import FastAPI, Body, Request, Response, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, Annotated, Optional
 from uuid import uuid4
 import traceback
@@ -76,6 +78,26 @@ class NlipSessionServer(FastAPI):
         self.sessions: Dict[str, SessionManager] = {}
 
         app = self
+
+        cors_origins_raw = os.getenv("CORS_ALLOW_ORIGINS", "").strip()
+        cors_origins = [origin.strip() for origin in cors_origins_raw.split(",") if origin.strip()]
+        cors_regex = os.getenv("CORS_ALLOW_ORIGIN_REGEX", ".*")
+        if cors_origins:
+            app.add_middleware(
+                CORSMiddleware,
+                allow_origins=cors_origins,
+                allow_credentials=True,
+                allow_methods=["*"],
+                allow_headers=["*"],
+            )
+        else:
+            app.add_middleware(
+                CORSMiddleware,
+                allow_origin_regex=cors_regex,
+                allow_credentials=True,
+                allow_methods=["*"],
+                allow_headers=["*"],
+            )
 
         @app.post("/nlip")
         async def process_nlip_request(

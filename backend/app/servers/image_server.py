@@ -1,10 +1,12 @@
+"""NLIP server wrapper for the ImageNlipAgent."""
+
 from __future__ import annotations
 
-"""NLIP server wrapper for the ImageNlipAgent."""
+from typing import Any, Optional
 
 from nlip_sdk.nlip import NLIP_Factory, NLIP_Message
 
-from app.agents.imageRecognition import ImageNlipAgent
+from app.agents.imageRecognition import describe_image
 from app.http_server.nlip_session_server import NlipSessionServer, SessionManager
 
 
@@ -14,23 +16,45 @@ CAP_QUERY_PHRASES = {
 }
 
 
-def _capabilities_text(agent: ImageNlipAgent) -> str:
+def _capabilities_text() -> str:
     capabilities = [
-        "IMAGE_DESCRIPTION:Describes images using Llava model|FORMATS:[binary]|SUBFORMATS:[image]",
+        "IMAGE_DESCRIPTION:Describes images using local DMR vision model|FORMATS:[binary]|SUBFORMATS:[image]",
         "PROMPT_GUIDANCE:Accepts optional prompts|FORMATS:[text]",
         "DATA_URL_STRIPPING:Handles base64 or data URLs",
     ]
-    return f"AGENT:{agent.name}\n" + ", ".join(capabilities)
+    return "AGENT:image\n" + ", ".join(capabilities)
 
 
-def _clean_outputs(outputs: list[str]) -> list[str]:
-    cleaned = [entry for entry in outputs if entry and not entry.startswith("Calling tool:")]
-    return cleaned or [""]
+def _get(entry: Any, key: str) -> Any:
+    if isinstance(entry, dict):
+        return entry.get(key)
+    return getattr(entry, key, None)
+
+
+def _find_image_content(entry: Any) -> Optional[str]:
+    fmt = (_get(entry, "format") or "").lower()
+    subfmt = (_get(entry, "subformat") or "").lower()
+    content = _get(entry, "content")
+
+    if isinstance(content, str) and content:
+        looks_like_image = content.startswith(("data:image", "/9j/", "iVBORw0KG"))
+        tagged_as_image = "image" in subfmt or fmt.startswith("binary")
+        if looks_like_image or tagged_as_image:
+            return content
+
+    for key in ("submessages", "messages"):
+        children = _get(entry, key)
+        if isinstance(children, list):
+            for child in children:
+                found = _find_image_content(child)
+                if found:
+                    return found
+    return None
 
 
 class ImageSessionManager(SessionManager):
     def __init__(self) -> None:
-        self.agent = ImageNlipAgent("image")
+        pass
 
     async def process_nlip(self, msg: NLIP_Message) -> NLIP_Message:
         text = msg.extract_text()
@@ -38,18 +62,20 @@ class ImageSessionManager(SessionManager):
         if text:
             normalized = text.strip().lower()
             if normalized in CAP_QUERY_PHRASES:
-                return NLIP_Factory.create_text(_capabilities_text(self.agent))
+                return NLIP_Factory.create_text(_capabilities_text())
 
         try:
-            raw_results = await self.agent.process_nlip(msg)
-        except Exception as exc:  # pragma: no cover
-            return NLIP_Factory.create_text(f"Error processing image request: {exc}")
+            msg_dict = msg.to_dict() if hasattr(msg, "to_dict") else msg.model_dump()
+        except Exception:
+            msg_dict = msg
 
-        results = _clean_outputs(raw_results)
-        response = NLIP_Factory.create_text(results[0])
-        for extra in results[1:]:
-            response.add_text(extra)
-        return response
+        image_content = _find_image_content(msg_dict)
+        if not image_content:
+            return NLIP_Factory.create_text("Image agent expects an NLIP message containing image data.")
+
+        prompt = text.strip() if text and text.strip() else None
+        result = await describe_image(image_base64=image_content, prompt=prompt)
+        return NLIP_Factory.create_text(result)
 
 
 app = NlipSessionServer("ImageAgentCookie", ImageSessionManager)
