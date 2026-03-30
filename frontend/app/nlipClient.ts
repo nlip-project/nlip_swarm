@@ -19,7 +19,7 @@ export type NLIPRequest = {
   metadata?: any;
 };
 
-/** Custom error class for NLIP client failures with enhanced context */
+// Custom error class for NLIP client failures
 export class NLIPError extends Error {
   constructor(
     public statusCode: number | null,
@@ -46,7 +46,7 @@ export default class NLIPClient {
   baseUrl: string;
   timeout: number;
   correlator: string | null;
-  private maxRetries: number = 2;
+  private maxRetries: number = 2; 
   private retryDelayMs: number = 500;
 
   constructor(baseUrl = '', options: { timeout?: number; maxRetries?: number } = {}) {
@@ -57,7 +57,7 @@ export default class NLIPClient {
     this.correlator = null;
   }
 
-  /** Determine if an error is retryable (transient) vs permanent */
+  // Determine if an error is retryable (transient) vs permanent 
   private isRetryableError(err: unknown): boolean {
     if (err instanceof NLIPError) {
       return err.isRetryable;
