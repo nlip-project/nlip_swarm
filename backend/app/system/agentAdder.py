@@ -14,6 +14,7 @@
 #           "instruction": "System instructions for the agent",
 #           "tools": ["list", "of", "tool", "names"],
 #          }
+#      "environment": {"key": "value" pairs to set as environment variables for the server process, optional}
 #
 import json
 from typing import Callable
@@ -66,6 +67,7 @@ def add_agents_from_spec(spec_json_file: str) -> list[tuple[NlipSessionServer, s
         suffix = server_spec.get("suffix")
         identifier = server_spec.get("identifier")
         session_manager_type = server_spec.get("session_manager", "default")
+        environment = server_spec.get("environment", {})
         if not scheme or not suffix or not identifier or not session_manager_type:
             raise ValueError("Each server spec must include 'scheme', 'suffix', 'identifier', and 'session_manager'")
 
@@ -87,6 +89,13 @@ def add_agents_from_spec(spec_json_file: str) -> list[tuple[NlipSessionServer, s
                 "translate": TranslationManager,
                 "sound": SoundSessionManager,
             }.get(session_manager_type)
+        
+        if environment:
+            for key, value in environment.items():
+                # Set environment variables for the server process. This is a simple implementation and may not be suitable for all use cases, especially if you need to set environment variables for in-memory servers or if you want to avoid side effects on the global environment.
+                # A more robust implementation might involve passing these environment variables directly to the session manager or server instance rather than setting them globally.
+                import os # Docker envs set via .ini and script, but for in-process servers we can set them here. Note that this will affect the entire process and all servers, so use with caution.
+                os.environ[key] = value
 
 
         # Parse agent specifications
