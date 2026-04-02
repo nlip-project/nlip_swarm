@@ -7,7 +7,6 @@ from pydantic import TypeAdapter
 import time
 from typing import Any, Dict, List, Optional, cast, Callable
 from dotenv import load_dotenv
-from app.system.config import MODELS
 
 #litellm._turn_on_debug() #pyright: ignore
 load_dotenv()
