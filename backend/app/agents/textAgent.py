@@ -79,7 +79,7 @@ class TextNlipAgent(NlipAgent):
     def __init__(
         self,
         name: str = "Text",
-        model: str = MODEL,
+        model: Optional[str] = MODEL,
         instruction: Optional[str] = None,
     ) -> None:
         super().__init__(name=name, model=model, instruction=instruction, tools=[generate_text])

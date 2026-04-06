@@ -19,7 +19,7 @@ if _OLLAMA_URL and _OLLAMA_MODEL:
     MODEL    = f"openai/{_OLLAMA_MODEL}"
     API_BASE: Optional[str] = _OLLAMA_URL.rstrip("/")
 else:
-    MODEL    = "cerebras/llama3.3-70b"
+    MODEL    = None
     API_BASE = None
 
 # PROMPTS
@@ -41,7 +41,9 @@ class Agent:
     - instruction (str): The system instructions
     - tools (list): the initial set of tools
     """
-    def __init__(self, name: str, model: str = MODEL, instruction: Optional[str] = None, tools: Optional[list[Callable]] = None, api_base: Optional[str] = API_BASE):
+    def __init__(self, name: str, model: Optional[str] = MODEL, instruction: Optional[str] = None, tools: Optional[list[Callable]] = None, api_base: Optional[str] = API_BASE):
+        if not model or not api_base:
+            raise RuntimeError("OLLAMA_URL and OLLAMA_MODEL must be set; Cerebras fallback has been removed.")
         self.tstart = time.time()
         self.name: str = name
         self.model: str = model

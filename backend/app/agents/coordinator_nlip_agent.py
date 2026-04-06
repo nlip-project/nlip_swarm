@@ -449,7 +449,7 @@ Use send_to_server only for simple text messages.
 class CoordinatorNlipAgent(NlipAgent):
     def __init__(self,
         name: str,
-        model: str = MODEL,
+        model: Optional[str] = MODEL,
         instruction: Optional[str] = None,
         tools: Optional[list] = None,
         api_base: Optional[str] = API_BASE,

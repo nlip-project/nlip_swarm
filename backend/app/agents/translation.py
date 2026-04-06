@@ -67,7 +67,7 @@ class TranslationNlipAgent(NlipAgent):
     def __init__(
         self,
         name: str = "Translate",
-        model: str = MODEL,
+        model: Optional[str] = MODEL,
         instruction: Optional[str] = None,
         tools: Optional[list] = None,
         api_base: Optional[str] = API_BASE,
