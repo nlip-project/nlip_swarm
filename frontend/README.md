@@ -34,6 +34,7 @@ Expo/React Native client for the NLIP Swarm project. The mobile experience captu
 	npm run start
 	```
 	- Press `i` for iOS simulator, `a` for Android, or `w` for web.
+	- Use `npm run start:tunnel` only when you need remote device access through ngrok.
 	- Expo Go users can scan the QR code printed in the terminal.
 
 Keep both processes running so the frontend can log in, fetch `/me`, and send NLIP traffic.
@@ -42,7 +43,8 @@ Keep both processes running so the frontend can log in, fetch `/me`, and send NL
 
 | Command          | Description |
 |------------------|-------------|
-| `npm run start`  | Expo dev server with tunnel (default workflow). |
+| `npm run start`  | Expo dev server on the local network. |
+| `npm run start:tunnel` | Expo dev server with tunnel for remote device access. |
 | `npm run android`| Build & launch the Android binary via `expo run:android`. |
 | `npm run ios`    | Build & launch the iOS binary via `expo run:ios`. |
 | `npm run web`    | Serve the app via Expo Web. |

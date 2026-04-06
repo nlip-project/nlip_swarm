@@ -1,5 +1,4 @@
 import os
-import asyncio
 import logging
 from typing import Optional, Any, cast
 
@@ -12,17 +11,21 @@ logger = logging.getLogger("NLIP")
 
 _TRANSLATION_URL   = os.getenv("TRANSLATION_URL")
 _TRANSLATION_MODEL = os.getenv("TRANSLATION_MODEL")
+_OLLAMA_URL        = os.getenv("OLLAMA_URL")
+_OLLAMA_MODEL      = os.getenv("OLLAMA_MODEL")
 
 if _TRANSLATION_URL and _TRANSLATION_MODEL:
     TRANSLATION_LLM_MODEL    = f"openai/{_TRANSLATION_MODEL}"
     TRANSLATION_LLM_API_BASE = _TRANSLATION_URL.rstrip("/")
-    MODEL    = DEFAULT_MODEL
-    API_BASE = TRANSLATION_LLM_API_BASE
+elif _OLLAMA_URL and _OLLAMA_MODEL:
+    TRANSLATION_LLM_MODEL    = f"openai/{_OLLAMA_MODEL}"
+    TRANSLATION_LLM_API_BASE = _OLLAMA_URL.rstrip("/")
 else:
     TRANSLATION_LLM_MODEL    = None
     TRANSLATION_LLM_API_BASE = None
-    MODEL    = DEFAULT_MODEL
-    API_BASE = None
+
+MODEL    = TRANSLATION_LLM_MODEL or DEFAULT_MODEL
+API_BASE = TRANSLATION_LLM_API_BASE
 
 
 # TOOL DEFINITION
