@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, cast, Callable
 
 _OLLAMA_URL   = os.getenv("OLLAMA_URL")
 _OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
+LOCAL_API_KEY = "local"
 
 if _OLLAMA_URL and _OLLAMA_MODEL:
     MODEL    = f"openai/{_OLLAMA_MODEL}"
@@ -181,6 +182,7 @@ class Agent:
             messages=self.messages,
             tools=self.tools,
             api_base=self.api_base,
+            api_key=LOCAL_API_KEY,
         ))
         response_msg = response.choices[0].message
         if response_msg is None:
@@ -200,6 +202,7 @@ class Agent:
                 messages=self.messages,
                 tools=self.tools,
                 api_base=self.api_base,
+                api_key=LOCAL_API_KEY,
             ))
             response_msg = response.choices[0].message
             self._handle_response(response_msg)

@@ -5,7 +5,7 @@ from typing import Optional, Any, cast
 from litellm import acompletion
 
 from .nlip_agent import NlipAgent
-from .base import MODEL as DEFAULT_MODEL
+from .base import MODEL as DEFAULT_MODEL, LOCAL_API_KEY
 
 logger = logging.getLogger("NLIP")
 
@@ -43,6 +43,7 @@ async def get_translation(text: str, target_locale: str) -> str | None:
                 model=TRANSLATION_LLM_MODEL,
                 messages=messages,
                 api_base=TRANSLATION_LLM_API_BASE,
+                api_key=LOCAL_API_KEY,
             ))
             content = response.choices[0].message.content
             return content.strip() if isinstance(content, str) else None
