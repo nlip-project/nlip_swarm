@@ -13,28 +13,28 @@ AGENT:Name\n
 CAP1:desc, CAP2:desc, ...
 """
 
-import asyncio
-import logging
+import json
 import os
+import re
 from typing import Optional, Any, Dict
 from urllib.parse import urlparse
-import httpx
-import json
 
 from nlip_sdk.nlip import NLIP_Factory, NLIP_Message
+from app._logging import logger
 from app.agents.base import MODEL as DEFAULT_MODEL
 from app.agents.nlip_agent import NlipAgent
 from app.http_client.nlip_async_client import NlipAsyncClient
 from app.system.config import MOUNT_URLS
 
 sessions = {}
-from app._logging import logger
 
 CAPABILITIES_QUERY = "what are your nlip capabilities?"
 SOUND_URL = MOUNT_URLS.get("sound", "http://sound:8029")
 TEXT_URL = MOUNT_URLS.get("text", "http://text:8027")
 TRANSLATE_URL = MOUNT_URLS.get("translate", "http://translate:8026")
 IMAGE_URL = MOUNT_URLS.get("image", "http://image:8028")
+ENGLISH_LOCALES = {"en", "en-us", "en-gb"}
+_LANG_CODE_RE = re.compile(r"^[a-z]{2,3}(?:-[a-z]{2})?$")
 
 _OLLAMA_URL   = os.getenv("OLLAMA_URL")
 _OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
@@ -120,6 +120,143 @@ async def get_all_capabilities() -> Dict[str, Any]:
             results[hashkey] = f"Error: {exc}"
 
     return results
+
+
+def _session_key(url: str) -> str:
+    parsed = urlparse(str(url))
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+async def _ensure_connected(url: str) -> None:
+    key = _session_key(url)
+    if key in sessions:
+        return
+
+    result = await connect_to_server(url)
+    if isinstance(result, str) and result.startswith("Exception:"):
+        raise RuntimeError(result)
+
+
+def _extract_response_text(response: Any) -> str:
+    if isinstance(response, dict):
+        content = response.get("content")
+        if isinstance(content, str) and content.strip():
+            return content.strip()
+
+        for submsg in response.get("submessages") or []:
+            if isinstance(submsg, dict):
+                subcontent = submsg.get("content")
+                if isinstance(subcontent, str) and subcontent.strip():
+                    return subcontent.strip()
+    if isinstance(response, str):
+        return response.strip()
+    return ""
+
+
+def _extract_response_texts(response: Any) -> list[str]:
+    if isinstance(response, dict):
+        content = response.get("content")
+        extras = []
+        for submsg in response.get("submessages") or []:
+            if isinstance(submsg, dict):
+                extra = submsg.get("content")
+                if isinstance(extra, str) and extra.strip() and extra != content:
+                    extras.append(extra)
+
+        if isinstance(content, str) and content.strip():
+            return [content, *extras] if extras else [content]
+    if isinstance(response, str) and response.strip():
+        return [response]
+    return [str(response)]
+
+
+def _strip_code_fence(text: str) -> str:
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        lines = cleaned.splitlines()
+        if len(lines) >= 2:
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            cleaned = "\n".join(lines).strip()
+    return cleaned
+
+
+def _is_english_locale(locale: Optional[str]) -> bool:
+    if not locale:
+        return False
+    normalized = locale.strip().lower()
+    return normalized in ENGLISH_LOCALES or normalized.startswith("en-")
+
+
+async def _detect_language_via_translation_server(text: str) -> Optional[str]:
+    if not text or not text.strip():
+        return None
+
+    try:
+        await _ensure_connected(TRANSLATE_URL)
+        prompt = (
+            "Detect the language of the text below. "
+            "Return ONLY minified JSON with this exact shape: "
+            "{\"language_code\":\"<iso-639-1-or-bcp-47-code>\"}.\n\n"
+            f"Text:\n{text}"
+        )
+        response = await send_to_server(TRANSLATE_URL, prompt)
+        raw = _strip_code_fence(_extract_response_text(response))
+        if not raw:
+            return None
+
+        code: Optional[str] = None
+        try:
+            payload = json.loads(raw)
+            if isinstance(payload, dict):
+                value = payload.get("language_code")
+                if isinstance(value, str):
+                    code = value.strip().lower()
+        except Exception:
+            match = re.search(r"\b([a-z]{2,3}(?:-[a-z]{2})?)\b", raw.lower())
+            if match:
+                code = match.group(1)
+
+        if code and _LANG_CODE_RE.match(code):
+            return code
+    except Exception as exc:
+        logger.warning(f"Language detection failed via translation server: {exc}")
+
+    return None
+
+
+async def _translate_via_server(
+    text: str,
+    target_locale: str,
+    source_locale: Optional[str] = None,
+) -> Optional[str]:
+    if not text or not text.strip():
+        return None
+
+    try:
+        await _ensure_connected(TRANSLATE_URL)
+        if source_locale:
+            prompt = (
+                "Translate the text below from "
+                f"'{source_locale}' to '{target_locale}'. "
+                "Return only the translated text with no explanation.\n\n"
+                f"Text:\n{text}"
+            )
+        else:
+            prompt = (
+                f"Translate the text below to '{target_locale}'. "
+                "Return only the translated text with no explanation.\n\n"
+                f"Text:\n{text}"
+            )
+
+        response = await send_to_server(TRANSLATE_URL, prompt)
+        translated = _extract_response_text(response)
+        return translated.strip() if translated and translated.strip() else None
+    except Exception as exc:
+        logger.warning(f"Translation failed via translation server to {target_locale}: {exc}")
+        return None
 
 
 def inspect_message_formats(msg: NLIP_Message) -> dict:
@@ -286,6 +423,8 @@ All servers are already connected. You normally only need to call:
 
 send_to_server
 
+For non-English text requests, detect the source language, translate to English for processing, and translate the final answer back to the original language.
+
 Only call connect_to_server if the user explicitly asks you to connect to a new server.
 
 CAPABILITIES REQUEST
@@ -341,12 +480,11 @@ class CoordinatorNlipAgent(NlipAgent):
             if format_info['has_image']:
                 url = IMAGE_URL
 
-                if url not in sessions:
-                    try:
-                        await connect_to_server(url)
-                    except Exception as e:
-                        logger.error(f"[{self.name}] Failed to connect to {url}: {e}")
-                        return [f"Error: Could not connect to image server: {e}"]
+                try:
+                    await _ensure_connected(url)
+                except Exception as e:
+                    logger.error(f"[{self.name}] Failed to connect to {url}: {e}")
+                    return [f"Error: Could not connect to image server: {e}"]
 
                 nlip_dict = nlip_msg.to_dict() if hasattr(nlip_msg, 'to_dict') else nlip_msg.model_dump()
 
@@ -362,12 +500,11 @@ class CoordinatorNlipAgent(NlipAgent):
             if format_info['has_audio']:
                 url = SOUND_URL
 
-                if url not in sessions:
-                    try:
-                        await connect_to_server(url)
-                    except Exception as e:
-                        logger.error(f"[{self.name}] Failed to connect to {url}: {e}")
-                        return [f"Error: Could not connect to sound server: {e}"]
+                try:
+                    await _ensure_connected(url)
+                except Exception as e:
+                    logger.error(f"[{self.name}] Failed to connect to {url}: {e}")
+                    return [f"Error: Could not connect to sound server: {e}"]
 
                 nlip_dict = nlip_msg.to_dict() if hasattr(nlip_msg, 'to_dict') else nlip_msg.model_dump()
 
@@ -397,29 +534,52 @@ class CoordinatorNlipAgent(NlipAgent):
                     return ["\n\n".join(lines) if lines else "No connected agent capabilities available."]
 
                 target_url = TEXT_URL
-                if "translate" in normalized or "translation" in normalized:
+                explicit_translation_request = "translate" in normalized or "translation" in normalized
+                if explicit_translation_request:
                     target_url = TRANSLATE_URL
 
-                if target_url not in sessions:
-                    try:
-                        await connect_to_server(target_url)
-                    except Exception as exc:
-                        logger.error(f"[{self.name}] Failed to connect to {target_url}: {exc}")
-                        return [f"Error: Could not connect to {target_url}: {exc}"]
+                source_locale = None
+                translated_input = text
+                if not explicit_translation_request:
+                    source_locale = await _detect_language_via_translation_server(text)
+                    if source_locale and not _is_english_locale(source_locale):
+                        logger.info(f"[{self.name}] Detected non-English locale '{source_locale}', pivoting through English")
+                        english_text = await _translate_via_server(
+                            text,
+                            target_locale="en",
+                            source_locale=source_locale,
+                        )
+                        if english_text:
+                            translated_input = english_text
 
                 try:
-                    response = await send_to_server(target_url, text)
-                    if isinstance(response, dict):
-                        content = response.get('content')
-                        extras = []
-                        for submsg in response.get('submessages') or []:
-                            if isinstance(submsg, dict):
-                                extra = submsg.get('content')
-                                if isinstance(extra, str) and extra.strip() and extra != content:
-                                    extras.append(extra)
-                        if isinstance(content, str) and content.strip():
-                            return [content, *extras] if extras else [content]
-                    return [str(response)]
+                    await _ensure_connected(target_url)
+                except Exception as exc:
+                    logger.error(f"[{self.name}] Failed to connect to {target_url}: {exc}")
+                    return [f"Error: Could not connect to {target_url}: {exc}"]
+
+                try:
+                    response = await send_to_server(target_url, translated_input)
+                    outputs = _extract_response_texts(response)
+
+                    should_translate_back = (
+                        not explicit_translation_request
+                        and source_locale is not None
+                        and not _is_english_locale(source_locale)
+                        and translated_input != text
+                    )
+                    if should_translate_back:
+                        translated_outputs: list[str] = []
+                        for output in outputs:
+                            back = await _translate_via_server(
+                                output,
+                                target_locale=source_locale,
+                                source_locale="en",
+                            )
+                            translated_outputs.append(back if back else output)
+                        return translated_outputs
+
+                    return outputs
                 except Exception as exc:
                     logger.exception(f"[{self.name}] Error routing text request to {target_url}: {exc}")
                     return [f"Error processing text request: {exc}"]
