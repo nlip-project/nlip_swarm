@@ -7,10 +7,8 @@ from litellm import completion
 from pydantic import TypeAdapter
 import time
 from typing import Any, Dict, List, Optional, cast, Callable
-from dotenv import load_dotenv
 
 #litellm._turn_on_debug() #pyright: ignore
-load_dotenv()
 
 _OLLAMA_URL   = os.getenv("OLLAMA_URL")
 _OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")

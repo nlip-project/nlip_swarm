@@ -26,8 +26,8 @@ Expo/React Native client for the NLIP Swarm project. The mobile experience captu
 	```
 
 2. **Set environment variables**
-	- Duplicate `example.env` to `.env` or export `EXPO_PUBLIC_API_BASE` in your shell.
-	- Typical value during local development: `http://localhost:8024` (matches the FastAPI session server).
+	- Optional only: export `EXPO_PUBLIC_API_BASE` if you want to override the default backend URL.
+	- Default during local development is `http://localhost:8024`.
 
 3. **Start the Expo dev server**
 	```bash
@@ -67,6 +67,6 @@ frontend/
 
 | Name                      | Purpose |
 |---------------------------|---------|
-| `EXPO_PUBLIC_API_BASE`    | Fully qualified URL of the backend (e.g., `https://swarm.example.com`). Exposed to the client. |
+| `EXPO_PUBLIC_API_BASE`    | Fully qualified URL of the backend. Defaults to `http://localhost:8024` if unset. |
 
 For backend instructions or full-stack deployment (Docker Compose), refer to the root-level `README.md`.

@@ -2,8 +2,6 @@ services:
   frontend:
     build:
       context: ./frontend
-    env_file:
-      - ./frontend/.env
     environment:
       EXPO_PUBLIC_API_BASE: ${EXPO_PUBLIC_API_BASE:-http://host.docker.internal:8024}
       EXPO_DEVTOOLS_LISTEN_ADDRESS: 0.0.0.0
@@ -25,8 +23,6 @@ services:
         SERVICE_ROLE: coordinator
     command:
       ["uvicorn", "app.servers.coordinator_server:app", "--host", "0.0.0.0", "--port", "8024"]
-    env_file:
-      - ./backend/app/.env
     ports:
       - 8024:8024
     models:
@@ -37,7 +33,6 @@ services:
         endpoint_var: TRANSLATION_URL
         model_var: TRANSLATION_MODEL
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-dockermodelrunner}
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
     depends_on:
       - db
@@ -90,7 +85,6 @@ services:
         endpoint_var: OLLAMA_URL
         model_var: OLLAMA_MODEL
     environment:
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-dockermodelrunner}
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
     expose:
       - 8027
@@ -108,7 +102,6 @@ services:
         endpoint_var: OLLAMA_URL
         model_var: OLLAMA_MODEL
     environment:
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-dockermodelrunner}
       OLLAMA_IMAGE_MODEL: ai/ministral3
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
     expose:
