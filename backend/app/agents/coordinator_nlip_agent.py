@@ -706,11 +706,23 @@ class CoordinatorNlipAgent(NlipAgent):
                 translate_back_to_locale: Optional[str] = None
 
                 if not explicit_translation_request:
-                    source_locale = _extract_declared_locale(nlip_msg)
-                    if not source_locale:
-                        source_locale = await _detect_language_via_translation_server(text)
+                    declared_locale = _normalize_locale(_extract_declared_locale(nlip_msg))
+                    detected_locale = _normalize_locale(await _detect_language_via_translation_server(text))
 
-                    source_locale = _normalize_locale(source_locale)
+                    source_locale = declared_locale
+                    if detected_locale:
+                        if not declared_locale or (_is_english_locale(declared_locale) and not _is_english_locale(detected_locale)):
+                            source_locale = detected_locale
+
+                    logger.info(
+                        f"[{self.name}] Language resolution",
+                        extra={
+                            "declared_locale": declared_locale,
+                            "detected_locale": detected_locale,
+                            "resolved_source_locale": source_locale,
+                        },
+                    )
+
                     if source_locale and not _is_english_locale(source_locale):
                         english_text = await _translate_via_server(
                             text,
