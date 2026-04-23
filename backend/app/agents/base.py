@@ -1,8 +1,6 @@
 from app._logging import logger
-import asyncio
 import json
 import os
-import litellm
 from litellm import completion
 from pydantic import TypeAdapter
 import time
