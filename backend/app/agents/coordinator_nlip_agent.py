@@ -36,6 +36,33 @@ IMAGE_URL = MOUNT_URLS.get("image", "http://image:8028")
 ENGLISH_LOCALES = {"en", "en-us", "en-gb"}
 _LANG_CODE_RE = re.compile(r"^[a-z]{2,3}(?:-[a-z]{2})?$")
 
+_TRANSLATION_INTENT_PATTERNS = [
+    re.compile(r"\btranslate\b", re.IGNORECASE),
+    re.compile(r"\btranslation\b", re.IGNORECASE),
+    re.compile(r"\btraduce\b", re.IGNORECASE),
+    re.compile(r"\btraducir\b", re.IGNORECASE),
+    re.compile(r"\btraduccion\b", re.IGNORECASE),
+    re.compile(r"\btraducción\b", re.IGNORECASE),
+]
+
+
+def _is_translation_request(text: str) -> bool:
+    if not text:
+        return False
+    normalized = text.strip()
+    if not normalized:
+        return False
+    return any(pattern.search(normalized) is not None for pattern in _TRANSLATION_INTENT_PATTERNS)
+
+
+def _preview_text(text: str, limit: int = 120) -> str:
+    if not text:
+        return ""
+    compact = " ".join(text.split())
+    if len(compact) <= limit:
+        return compact
+    return compact[:limit] + "..."
+
 
 def _is_capabilities_request(text: str) -> bool:
     if not text:
@@ -577,9 +604,16 @@ class CoordinatorNlipAgent(NlipAgent):
             text = extract_text_from_message(nlip_msg)
 
             if text:
-                normalized = text.lower()
+                logger.info(
+                    f"[{self.name}] Extracted text payload",
+                    extra={
+                        "text_len": len(text),
+                        "text_preview": _preview_text(text),
+                    },
+                )
 
                 if _is_capabilities_request(text):
+                    logger.info(f"[{self.name}] Capabilities request detected; querying all connected agents")
                     capabilities = await get_all_capabilities()
                     lines = []
                     for url, summary in capabilities.items():
@@ -587,9 +621,18 @@ class CoordinatorNlipAgent(NlipAgent):
                     return ["\n\n".join(lines) if lines else "No connected agent capabilities available."]
 
                 target_url = TEXT_URL
-                explicit_translation_request = "translate" in normalized or "translation" in normalized
+                explicit_translation_request = _is_translation_request(text)
                 if explicit_translation_request:
                     target_url = TRANSLATE_URL
+                    logger.info(
+                        f"[{self.name}] Routing decision: translation",
+                        extra={"target_url": target_url},
+                    )
+                else:
+                    logger.info(
+                        f"[{self.name}] Routing decision: text",
+                        extra={"target_url": target_url},
+                    )
 
                 translated_input = text
 
@@ -602,6 +645,14 @@ class CoordinatorNlipAgent(NlipAgent):
                 try:
                     response = await send_to_server(target_url, translated_input)
                     outputs = _extract_response_texts(response)
+                    logger.info(
+                        f"[{self.name}] Downstream response received",
+                        extra={
+                            "target_url": target_url,
+                            "outputs_count": len(outputs),
+                            "first_output_preview": _preview_text(outputs[0] if outputs else ""),
+                        },
+                    )
                     return outputs
                 except Exception as exc:
                     logger.exception(f"[{self.name}] Error routing text request to {target_url}: {exc}")

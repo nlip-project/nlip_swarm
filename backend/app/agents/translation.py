@@ -32,7 +32,18 @@ API_BASE = TRANSLATION_LLM_API_BASE
 async def get_translation(text: str, target_locale: str) -> str | None:
     """Translate `text` into `target_locale`."""
     if not text or not text.strip():
+        logger.warning("Translation requested with empty text", extra={"target_locale": target_locale})
         return None
+
+    logger.info(
+        "Translation request received",
+        extra={
+            "target_locale": target_locale,
+            "input_len": len(text),
+            "backend": "local-llm" if (TRANSLATION_LLM_MODEL and TRANSLATION_LLM_API_BASE) else "googletrans-fallback",
+        },
+    )
+
     if TRANSLATION_LLM_MODEL and TRANSLATION_LLM_API_BASE:
         messages = [
             {"role": "system", "content": "You are a professional translator. Output only the translated text."},
@@ -46,6 +57,10 @@ async def get_translation(text: str, target_locale: str) -> str | None:
                 api_key=LOCAL_API_KEY,
             ))
             content = response.choices[0].message.content
+            logger.info(
+                "Translation completed via local-llm",
+                extra={"target_locale": target_locale, "output_len": len(content) if isinstance(content, str) else 0},
+            )
             return content.strip() if isinstance(content, str) else None
         except Exception as e:
             logger.error(f"Local LLM translation error: {e}")
@@ -56,6 +71,10 @@ async def get_translation(text: str, target_locale: str) -> str | None:
         async with Translator() as translator:
             try:
                 result = await translator.translate(text, dest=target_locale)
+                logger.info(
+                    "Translation completed via googletrans fallback",
+                    extra={"target_locale": target_locale, "output_len": len(result.text) if isinstance(result.text, str) else 0},
+                )
                 return result.text
             except Exception as e:
                 logger.error(f"Translation error: {e}")

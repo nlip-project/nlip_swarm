@@ -100,6 +100,14 @@ class TranslationManager(SessionManager):
     async def process_nlip(self, msg: NLIP_Message) -> NLIP_Message:
         text = msg.extract_text()
 
+        logger.info(
+            "Translation server received request",
+            extra={
+                "has_text": bool(text and text.strip()),
+                "text_len": len(text) if isinstance(text, str) else 0,
+            },
+        )
+
         if not text:
             return NLIP_Factory.create_text("Translation agent expects textual content.")
 
@@ -110,12 +118,29 @@ class TranslationManager(SessionManager):
         explicit_translation = _parse_explicit_translation_request(text)
         if explicit_translation:
             source_text, target_locale = explicit_translation
+            logger.info(
+                "Explicit translation intent matched",
+                extra={
+                    "target_locale": target_locale,
+                    "source_len": len(source_text),
+                },
+            )
             translated = await get_translation(source_text, target_locale)
             if translated and translated.strip():
-                return NLIP_Factory.create_text(_normalize_translated_text(translated))
+                normalized_text = _normalize_translated_text(translated)
+                logger.info(
+                    "Explicit translation completed",
+                    extra={"target_locale": target_locale, "output_len": len(normalized_text)},
+                )
+                return NLIP_Factory.create_text(normalized_text)
+            logger.warning(
+                "Explicit translation failed",
+                extra={"target_locale": target_locale},
+            )
             return NLIP_Factory.create_text("Translation failed for the requested target locale.")
 
         try:
+            logger.info("Falling back to agent-driven translation processing")
             results = await self.myAgent.process_query(text)
             logger.info(f"TranslationServerResults: {results}")
             clean = _clean_outputs(results)
