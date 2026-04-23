@@ -39,11 +39,9 @@ class Agent:
     - tools (list): the initial set of tools
     """
     def __init__(self, name: str, model: Optional[str] = MODEL, instruction: Optional[str] = None, tools: Optional[list[Callable]] = None, api_base: Optional[str] = API_BASE):
-        if not model or not api_base:
-            raise RuntimeError("OLLAMA_URL and OLLAMA_MODEL must be set; Cerebras fallback has been removed.")
         self.tstart = time.time()
         self.name: str = name
-        self.model: str = model
+        self.model: Optional[str] = model
         self.api_base: Optional[str] = api_base
         self.instruction = instruction
         self.messages: List[Any] = [
@@ -175,6 +173,12 @@ class Agent:
 
 
     async def _drive_llm(self) -> list[str]:
+        if not self.model or not self.api_base:
+            raise RuntimeError(
+                "An LLM endpoint and model must be configured to run LLM-backed agents. "
+                "Set the service's endpoint/model environment variables (for example via Docker Model Runner) or disable LLM-dependent servers."
+            )
+
         response = cast(Any, completion(
             model=self.model,
             messages=self.messages,

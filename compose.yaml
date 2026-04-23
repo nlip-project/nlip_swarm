@@ -50,6 +50,10 @@ services:
         SERVICE_ROLE: basic
     command:
       ["uvicorn", "app.servers.basic_server:app", "--host", "0.0.0.0", "--port", "8025"]
+    models:
+      llm:
+        endpoint_var: OLLAMA_URL
+        model_var: OLLAMA_MODEL
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
     expose:
@@ -115,6 +119,10 @@ services:
         SERVICE_ROLE: sound
     command:
       ["uvicorn", "app.servers.sound_server:app", "--host", "0.0.0.0", "--port", "8029"]
+    models:
+      llm:
+        endpoint_var: OLLAMA_URL
+        model_var: OLLAMA_MODEL
     environment:
       WHISPER_URL: http://whisper:9002
       WHISPER_MODEL: ${WHISPER_MODEL:-large-v3}
