@@ -36,6 +36,33 @@ IMAGE_URL = MOUNT_URLS.get("image", "http://image:8028")
 ENGLISH_LOCALES = {"en", "en-us", "en-gb"}
 _LANG_CODE_RE = re.compile(r"^[a-z]{2,3}(?:-[a-z]{2})?$")
 
+_LOCALE_NAME_TO_CODE = {
+    "english": "en",
+    "inglés": "en",
+    "ingles": "en",
+    "spanish": "es",
+    "español": "es",
+    "espanol": "es",
+    "french": "fr",
+    "francés": "fr",
+    "frances": "fr",
+    "german": "de",
+    "alemán": "de",
+    "aleman": "de",
+    "italian": "it",
+    "italiano": "it",
+    "portuguese": "pt",
+    "portugués": "pt",
+    "portugues": "pt",
+    "chinese": "zh-cn",
+    "chino": "zh-cn",
+    "japanese": "ja",
+    "japonés": "ja",
+    "japones": "ja",
+    "korean": "ko",
+    "coreano": "ko",
+}
+
 _TRANSLATION_INTENT_PATTERNS = [
     re.compile(r"\btranslate\b", re.IGNORECASE),
     re.compile(r"\btranslation\b", re.IGNORECASE),
@@ -233,6 +260,47 @@ def _is_english_locale(locale: Optional[str]) -> bool:
         return False
     normalized = locale.strip().lower()
     return normalized in ENGLISH_LOCALES or normalized.startswith("en-")
+
+
+def _normalize_locale(locale: Optional[str]) -> Optional[str]:
+    if not locale:
+        return None
+    normalized = locale.strip().lower()
+    if not normalized:
+        return None
+    return _LOCALE_NAME_TO_CODE.get(normalized, normalized)
+
+
+def _extract_declared_locale(msg: NLIP_Message) -> Optional[str]:
+    """Best-effort locale extraction from top-level or nested subformat fields."""
+    try:
+        msg_dict = msg.to_dict() if hasattr(msg, 'to_dict') else msg.model_dump()
+    except Exception:
+        return None
+
+    def _get(entry, key):
+        if isinstance(entry, dict):
+            return entry.get(key)
+        return getattr(entry, key, None)
+
+    def _walk(entry) -> Optional[str]:
+        subformat = _get(entry, "subformat")
+        fmt = (_get(entry, "format") or "").lower()
+        if isinstance(subformat, str) and (fmt.startswith("text") or fmt == ""):
+            normalized = _normalize_locale(subformat)
+            if normalized:
+                return normalized
+
+        for key in ("submessages", "messages"):
+            children = _get(entry, key)
+            if isinstance(children, list):
+                for child in children:
+                    found = _walk(child)
+                    if found:
+                        return found
+        return None
+
+    return _walk(msg_dict)
 
 
 async def _detect_language_via_translation_server(text: str) -> Optional[str]:
@@ -635,6 +703,32 @@ class CoordinatorNlipAgent(NlipAgent):
                     )
 
                 translated_input = text
+                translate_back_to_locale: Optional[str] = None
+
+                if not explicit_translation_request:
+                    source_locale = _extract_declared_locale(nlip_msg)
+                    if not source_locale:
+                        source_locale = await _detect_language_via_translation_server(text)
+
+                    source_locale = _normalize_locale(source_locale)
+                    if source_locale and not _is_english_locale(source_locale):
+                        english_text = await _translate_via_server(
+                            text,
+                            target_locale="en",
+                            source_locale=source_locale,
+                        )
+                        if english_text and english_text.strip():
+                            translated_input = english_text.strip()
+                            translate_back_to_locale = source_locale
+                            logger.info(
+                                f"[{self.name}] Applied English pivot for multilingual request",
+                                extra={"source_locale": source_locale},
+                            )
+                        else:
+                            logger.warning(
+                                f"[{self.name}] Failed to translate to English; using original text",
+                                extra={"source_locale": source_locale},
+                            )
 
                 try:
                     await _ensure_connected(target_url)
@@ -645,6 +739,26 @@ class CoordinatorNlipAgent(NlipAgent):
                 try:
                     response = await send_to_server(target_url, translated_input)
                     outputs = _extract_response_texts(response)
+
+                    if (
+                        not explicit_translation_request
+                        and translate_back_to_locale
+                        and outputs
+                    ):
+                        translated_outputs: list[str] = []
+                        for output in outputs:
+                            back = await _translate_via_server(
+                                output,
+                                target_locale=translate_back_to_locale,
+                                source_locale="en",
+                            )
+                            translated_outputs.append(back.strip() if back and back.strip() else output)
+                        outputs = translated_outputs
+                        logger.info(
+                            f"[{self.name}] Translated response back to source locale",
+                            extra={"target_locale": translate_back_to_locale},
+                        )
+
                     logger.info(
                         f"[{self.name}] Downstream response received",
                         extra={
