@@ -60,12 +60,18 @@ def _normalize_translated_text(text: str) -> str:
         return cleaned
 
     first = lines[0].lower().rstrip(":")
-    if first in {
-        "here is the translation",
-        "translation",
-        "translated text",
-        "here's the translation",
-    } and len(lines) > 1:
+    if (
+        len(lines) > 1
+        and (
+            first in {
+                "here is the translation",
+                "translation",
+                "translated text",
+                "here's the translation",
+            }
+            or ("translation" in first and (first.startswith("here is") or first.startswith("here's") or first.startswith("heres")))
+        )
+    ):
         return "\n".join(lines[1:]).strip()
 
     return cleaned
