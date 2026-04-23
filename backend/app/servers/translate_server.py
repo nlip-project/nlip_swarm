@@ -48,6 +48,28 @@ def _parse_explicit_translation_request(text: str) -> tuple[str, str] | None:
     target_locale = LANGUAGE_TO_CODE.get(target_raw, target_raw)
     return (source_text, target_locale)
 
+
+def _normalize_translated_text(text: str) -> str:
+    """Remove common wrapper prefixes from LLM translation outputs."""
+    if not text:
+        return text
+
+    cleaned = text.strip()
+    lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+    if not lines:
+        return cleaned
+
+    first = lines[0].lower().rstrip(":")
+    if first in {
+        "here is the translation",
+        "translation",
+        "translated text",
+        "here's the translation",
+    } and len(lines) > 1:
+        return "\n".join(lines[1:]).strip()
+
+    return cleaned
+
 def _capabilities_text(agent: TranslationNlipAgent) -> str:
     capabilities = [
         "TRANSLATE_TEXT:Translates text to a specified target locale using the get_translation tool.",
@@ -84,7 +106,7 @@ class TranslationManager(SessionManager):
             source_text, target_locale = explicit_translation
             translated = await get_translation(source_text, target_locale)
             if translated and translated.strip():
-                return NLIP_Factory.create_text(translated.strip())
+                return NLIP_Factory.create_text(_normalize_translated_text(translated))
             return NLIP_Factory.create_text("Translation failed for the requested target locale.")
 
         try:
