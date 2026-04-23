@@ -36,6 +36,24 @@ IMAGE_URL = MOUNT_URLS.get("image", "http://image:8028")
 ENGLISH_LOCALES = {"en", "en-us", "en-gb"}
 _LANG_CODE_RE = re.compile(r"^[a-z]{2,3}(?:-[a-z]{2})?$")
 
+
+def _is_capabilities_request(text: str) -> bool:
+    if not text:
+        return False
+
+    normalized = " ".join(text.strip().lower().split())
+    if not normalized:
+        return False
+
+    if normalized == CAPABILITIES_QUERY:
+        return True
+
+    return (
+        "nlip" in normalized
+        and "capabilit" in normalized
+        and any(token in normalized for token in ("what", "describe", "list", "show"))
+    )
+
 _OLLAMA_URL   = os.getenv("OLLAMA_URL")
 _OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
 
@@ -526,7 +544,7 @@ class CoordinatorNlipAgent(NlipAgent):
             if text:
                 normalized = text.lower()
 
-                if normalized == CAPABILITIES_QUERY:
+                if _is_capabilities_request(text):
                     capabilities = await get_all_capabilities()
                     lines = []
                     for url, summary in capabilities.items():
