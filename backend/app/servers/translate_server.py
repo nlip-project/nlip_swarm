@@ -15,14 +15,29 @@ CAP_QUERY_PHRASES = {
 
 LANGUAGE_TO_CODE = {
     "english": "en",
+    "inglés": "en",
+    "ingles": "en",
     "spanish": "es",
+    "español": "es",
+    "espanol": "es",
     "french": "fr",
+    "francés": "fr",
+    "frances": "fr",
     "german": "de",
+    "alemán": "de",
+    "aleman": "de",
     "italian": "it",
+    "italiano": "it",
     "portuguese": "pt",
+    "portugués": "pt",
+    "portugues": "pt",
     "chinese": "zh-cn",
+    "chino": "zh-cn",
     "japanese": "ja",
+    "japonés": "ja",
+    "japones": "ja",
     "korean": "ko",
+    "coreano": "ko",
 }
 
 
@@ -36,7 +51,19 @@ def _parse_explicit_translation_request(text: str) -> tuple[str, str] | None:
     if not text:
         return None
 
-    match = re.match(r"^\s*translate(?:\s+this)?\s+to\s+([^:]+?)\s*:\s*(.+)\s*$", text, re.IGNORECASE | re.DOTALL)
+    patterns = [
+        # English: "Translate this to Spanish: ..."
+        r"^\s*translate(?:\s+this)?\s+to\s+([^:]+?)\s*:\s*(.+)\s*$",
+        # Spanish: "Traduce esto al inglés: ..." / "Traduce al ingles: ..."
+        r"^\s*traduce(?:\s+esto)?\s+a(?:l)?\s+([^:]+?)\s*:\s*(.+)\s*$",
+    ]
+
+    match = None
+    for pattern in patterns:
+        match = re.match(pattern, text, re.IGNORECASE | re.DOTALL)
+        if match:
+            break
+
     if not match:
         return None
 
@@ -44,6 +71,9 @@ def _parse_explicit_translation_request(text: str) -> tuple[str, str] | None:
     source_text = match.group(2).strip()
     if not source_text:
         return None
+
+    # Normalize common leading articles from Spanish target locale phrases.
+    target_raw = re.sub(r"^(el|la|los|las)\s+", "", target_raw)
 
     target_locale = LANGUAGE_TO_CODE.get(target_raw, target_raw)
     return (source_text, target_locale)
