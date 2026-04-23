@@ -1,8 +1,9 @@
 import os
 import argparse
+import re
 
 from nlip_sdk.nlip import NLIP_Factory, NLIP_Message
-from ..agents.translation import TranslationNlipAgent
+from ..agents.translation import TranslationNlipAgent, get_translation
 from ..http_server.nlip_session_server import SessionManager, NlipSessionServer
 import uvicorn
 from app._logging import logger
@@ -11,6 +12,41 @@ CAP_QUERY_PHRASES = {
     "describe your nlip capabilities.",
     "what are your nlip capabilities?",
 }
+
+LANGUAGE_TO_CODE = {
+    "english": "en",
+    "spanish": "es",
+    "french": "fr",
+    "german": "de",
+    "italian": "it",
+    "portuguese": "pt",
+    "chinese": "zh-cn",
+    "japanese": "ja",
+    "korean": "ko",
+}
+
+
+def _parse_explicit_translation_request(text: str) -> tuple[str, str] | None:
+    """
+    Parse prompts like:
+    - Translate this to Spanish: Hello
+    - Translate to en: Hello
+    Returns (source_text, target_locale).
+    """
+    if not text:
+        return None
+
+    match = re.match(r"^\s*translate(?:\s+this)?\s+to\s+([^:]+?)\s*:\s*(.+)\s*$", text, re.IGNORECASE | re.DOTALL)
+    if not match:
+        return None
+
+    target_raw = match.group(1).strip().lower()
+    source_text = match.group(2).strip()
+    if not source_text:
+        return None
+
+    target_locale = LANGUAGE_TO_CODE.get(target_raw, target_raw)
+    return (source_text, target_locale)
 
 def _capabilities_text(agent: TranslationNlipAgent) -> str:
     capabilities = [
@@ -42,6 +78,14 @@ class TranslationManager(SessionManager):
         normalized = text.strip().lower()
         if normalized in CAP_QUERY_PHRASES:
             return NLIP_Factory.create_text(_capabilities_text(self.myAgent))
+
+        explicit_translation = _parse_explicit_translation_request(text)
+        if explicit_translation:
+            source_text, target_locale = explicit_translation
+            translated = await get_translation(source_text, target_locale)
+            if translated and translated.strip():
+                return NLIP_Factory.create_text(translated.strip())
+            return NLIP_Factory.create_text("Translation failed for the requested target locale.")
 
         try:
             results = await self.myAgent.process_query(text)
