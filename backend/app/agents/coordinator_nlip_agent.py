@@ -321,6 +321,45 @@ def inspect_message_formats(msg: NLIP_Message) -> dict:
     }
 
 
+def extract_text_from_message(msg: NLIP_Message) -> str:
+    """
+    Extract text from NLIP payloads, including text/plain and nested messages.
+    """
+    try:
+        text = (msg.extract_text() or "").strip()
+        if text:
+            return text
+    except Exception:
+        pass
+
+    msg_dict = msg.to_dict() if hasattr(msg, 'to_dict') else msg.model_dump()
+
+    def _get(entry, key):
+        if isinstance(entry, dict):
+            return entry.get(key)
+        return getattr(entry, key, None)
+
+    def _walk(entry) -> Optional[str]:
+        fmt = (_get(entry, "format") or "").lower()
+        content = _get(entry, "content")
+
+        if isinstance(content, str) and content.strip():
+            if fmt.startswith("text") or fmt == "":
+                return content.strip()
+
+        for key in ("submessages", "messages"):
+            children = _get(entry, key)
+            if isinstance(children, list):
+                for child in children:
+                    found = _walk(child)
+                    if found:
+                        return found
+        return None
+
+    extracted = _walk(msg_dict)
+    return extracted or ""
+
+
 async def route_by_format(message: dict) -> dict:
     """
     Route NLIP message based on format inspection.
@@ -535,11 +574,7 @@ class CoordinatorNlipAgent(NlipAgent):
                     logger.exception(f"[{self.name}] Error from sound server: {exc}")
                     return [f"Error processing audio: {exc}"]
 
-            text = ""
-            try:
-                text = (nlip_msg.extract_text() or "").strip()
-            except Exception:
-                text = ""
+            text = extract_text_from_message(nlip_msg)
 
             if text:
                 normalized = text.lower()
@@ -556,19 +591,7 @@ class CoordinatorNlipAgent(NlipAgent):
                 if explicit_translation_request:
                     target_url = TRANSLATE_URL
 
-                source_locale = None
                 translated_input = text
-                if not explicit_translation_request:
-                    source_locale = await _detect_language_via_translation_server(text)
-                    if source_locale and not _is_english_locale(source_locale):
-                        logger.info(f"[{self.name}] Detected non-English locale '{source_locale}', pivoting through English")
-                        english_text = await _translate_via_server(
-                            text,
-                            target_locale="en",
-                            source_locale=source_locale,
-                        )
-                        if english_text:
-                            translated_input = english_text
 
                 try:
                     await _ensure_connected(target_url)
@@ -579,24 +602,6 @@ class CoordinatorNlipAgent(NlipAgent):
                 try:
                     response = await send_to_server(target_url, translated_input)
                     outputs = _extract_response_texts(response)
-
-                    should_translate_back = (
-                        not explicit_translation_request
-                        and source_locale is not None
-                        and not _is_english_locale(source_locale)
-                        and translated_input != text
-                    )
-                    if should_translate_back:
-                        translated_outputs: list[str] = []
-                        for output in outputs:
-                            back = await _translate_via_server(
-                                output,
-                                target_locale=source_locale,
-                                source_locale="en",
-                            )
-                            translated_outputs.append(back if back else output)
-                        return translated_outputs
-
                     return outputs
                 except Exception as exc:
                     logger.exception(f"[{self.name}] Error routing text request to {target_url}: {exc}")
