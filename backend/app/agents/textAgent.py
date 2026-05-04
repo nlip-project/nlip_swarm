@@ -9,7 +9,7 @@ from typing import Optional, Any, cast
 from litellm import acompletion
 
 from .nlip_agent import NlipAgent
-from .base import API_BASE, MODEL
+from .base import API_BASE, MODEL, LOCAL_API_KEY
 
 logger = logging.getLogger("NLIP")
 
@@ -48,6 +48,7 @@ async def generate_text(prompt: str, context: Optional[str] = None) -> str:
             model=TEXT_TOOL_MODEL,
             messages=messages,
             api_base=TEXT_TOOL_API_BASE,
+            api_key=LOCAL_API_KEY,
         )
     except Exception as exc:  # pragma: no cover - upstream outages
         logger.exception("Text tool request failed: %s", exc)
@@ -79,7 +80,7 @@ class TextNlipAgent(NlipAgent):
     def __init__(
         self,
         name: str = "Text",
-        model: str = MODEL,
+        model: Optional[str] = MODEL,
         instruction: Optional[str] = None,
     ) -> None:
         super().__init__(name=name, model=model, instruction=instruction, tools=[generate_text])

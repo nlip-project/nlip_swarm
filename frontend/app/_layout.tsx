@@ -20,6 +20,11 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
   const theme = colorScheme === 'dark' ? 'dark' : 'light';
   const router = useRouter();
+
+  useEffect(() => {
+    console.log('[NLIP] API_BASE:', API_BASE);
+  }, []);
+
   useEffect(() => {
     setRouter(router);
   }, [router]);
