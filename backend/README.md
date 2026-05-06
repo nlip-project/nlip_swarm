@@ -475,27 +475,3 @@ All configuration is read from environment variables (or a `backend/.env` file).
 | `NLIP_LOG_LEVEL` | `INFO` | Log verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 | `CORS_ALLOW_ORIGINS` | — | Comma-separated allowed CORS origins |
 | `CORS_ALLOW_ORIGIN_REGEX` | `.*` | CORS origin regex (used when `CORS_ALLOW_ORIGINS` is unset) |
-
----
-
-## Legacy (Deprecated) Stack
-
-The `app/deprecated/` tree contains the original NLIP supervisor
-implementation that exposed a single FastAPI app with:
-
-- `POST /nlip` – session‑aware NLIP endpoint.
-- `GET /health` – health check.
-
-Key files there:
-
-- `supervisor.py` – translation + image flow, including English pivot logic.
-- `api.py` – `NLIP_Application` / `NLIP_Session` abstractions and FastAPI setup.
-- `routes/nlip.py` and `routes/health.py` – route handlers for NLIP and health.
-
-This stack previously used an Ollama‑based `OllamaTranslationAgent` and
-`LlavaImageRecognitionAgent`. Parts of that design are now implemented
-separately in the new agent modules. The deprecated code is kept for
-reference and for tests that still target the older behavior, but the
-recommended entrypoint going forward is the coordinator‑based
-multi‑agent stack described above.
-
