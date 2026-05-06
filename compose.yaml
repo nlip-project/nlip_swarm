@@ -160,14 +160,15 @@ services:
       - db_data:/var/lib/postgresql/data
     ports:
       - 5432:5432
- 
+      # - 5433:5432 # Alternative port mapping if you want to access the DB from host
+
 volumes:
   db_data:
     name: db_data
 
 models:
   llm:
-    model: ai/llama3.2:3B-Q4_0
+    model: ${BASE_MODEL:-ai/llama3.2:3B-Q4_0}
     context_size: 4096
     runtime_flags:
       - "--n-gpu-layers"
@@ -177,7 +178,7 @@ models:
       - "--split-mode"
       - "${DMR_SPLIT_MODE:-layer}"
   translation:
-    model: ai/llama3.2:3B-Q4_0
+    model: ${TRANSLATION_MODEL:-ai/llama3.2:3B-Q4_0}
     context_size: 4096
     runtime_flags:
       - "--n-gpu-layers"
@@ -187,7 +188,7 @@ models:
       - "--split-mode"
       - "${DMR_SPLIT_MODE:-layer}"
   image_llm:
-    model: ai/ministral3
+    model: ${IMAGE_RECOGNITION_MODEL:-ai/ministral3}
     context_size: 4096
     runtime_flags:
       - "--n-gpu-layers"
