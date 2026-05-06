@@ -22,3 +22,14 @@ COORDINATOR_URL = MOUNT_URLS["coord"]
 
 # All non-coordinator endpoints derived from MOUNT_URLS
 DEFAULT_AGENT_ENDPOINTS = [url for name, url in MOUNT_URLS.items() if name != "coord"]
+
+# Model name registry — used as fallbacks when agent_spec.json omits a model.
+MODELS: dict[str, str] = {
+    "base_model": os.getenv("OLLAMA_MODEL", "ai/llama3.2:3B-Q4_0"),
+    "audio_model": os.getenv("WHISPER_MODEL", "large-v3"),
+}
+
+# Path config — json_path locates agent_spec.json relative to the backend root.
+PATHS: dict[str, str] = {
+    "json_path": os.getenv("AGENT_SPEC_PATH", ""),
+}
