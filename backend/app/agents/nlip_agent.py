@@ -55,7 +55,7 @@ Your responses should be clear, structured, and machine-interpretable so that ot
 class NlipAgent(Agent):
     def __init__(self,
                  name: str,
-                 model: str = MODEL,
+                 model: Optional[str] = MODEL,
                 instruction: Optional[str] = None,
                 tools: Optional[list[Callable]] = None,
                 api_base: Optional[str] = API_BASE):

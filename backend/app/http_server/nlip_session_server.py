@@ -3,7 +3,7 @@ import logging
 import os
 from fastapi import FastAPI, Body, Request, Response, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Dict, Annotated, Optional
+from typing import Any, Dict, Annotated, Optional
 from uuid import uuid4
 import traceback
 import sys
@@ -21,6 +21,26 @@ CAP_QUERY_PHRASES = {
     "describe your nlip capabilities.",
     "what are your nlip capabilities?",
 }
+
+
+def _normalize_nlip_payload(payload: Any) -> Any:
+    """
+    Backward-compatible normalization for incoming NLIP JSON.
+    Some clients send {format, content, label} without subformat.
+    Add a default subformat where format is present so NLIP_Message parsing succeeds.
+    """
+    if isinstance(payload, list):
+        return [_normalize_nlip_payload(item) for item in payload]
+
+    if not isinstance(payload, dict):
+        return payload
+
+    normalized = {key: _normalize_nlip_payload(value) for key, value in payload.items()}
+
+    if "format" in normalized and "subformat" not in normalized:
+        normalized["subformat"] = "plain"
+
+    return normalized
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -101,9 +121,15 @@ class NlipSessionServer(FastAPI):
 
         @app.post("/nlip")
         async def process_nlip_request(
-            message: Annotated[NLIP_Message, Body(examples=examples)],
+            raw_message: Annotated[dict, Body(examples=examples)],
             manager: SessionManager = Depends(self.get_session_manager)
         ):
+            try:
+                normalized_payload = _normalize_nlip_payload(raw_message)
+                message = NLIP_Message(**normalized_payload)
+            except Exception as exc:
+                raise HTTPException(status_code=422, detail=f"Invalid NLIP payload: {exc}") from exc
+
             # Persist conversation and incoming message, then persist assistant response.
             from app.auth.db import AsyncSessionLocal
             from app.models.conversation import Conversation

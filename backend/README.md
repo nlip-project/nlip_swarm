@@ -7,6 +7,8 @@ text, translation, image understanding, and audio (Whisper) processing.
 This README describes the current code layout (including the newer
 coordinator/agent architecture) and how to run and exercise it locally.
 
+All model access in this backend is local. No OpenAI or Cerebras API keys are required.
+
 ---
 
 ## High‑Level Architecture

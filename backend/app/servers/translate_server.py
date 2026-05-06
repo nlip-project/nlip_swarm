@@ -1,8 +1,9 @@
 import os
 import argparse
+import re
 
 from nlip_sdk.nlip import NLIP_Factory, NLIP_Message
-from ..agents.translation import TranslationNlipAgent
+from ..agents.translation import TranslationNlipAgent, get_translation
 from ..http_server.nlip_session_server import SessionManager, NlipSessionServer
 import uvicorn
 from app._logging import logger
@@ -11,6 +12,99 @@ CAP_QUERY_PHRASES = {
     "describe your nlip capabilities.",
     "what are your nlip capabilities?",
 }
+
+LANGUAGE_TO_CODE = {
+    "english": "en",
+    "inglés": "en",
+    "ingles": "en",
+    "spanish": "es",
+    "español": "es",
+    "espanol": "es",
+    "french": "fr",
+    "francés": "fr",
+    "frances": "fr",
+    "german": "de",
+    "alemán": "de",
+    "aleman": "de",
+    "italian": "it",
+    "italiano": "it",
+    "portuguese": "pt",
+    "portugués": "pt",
+    "portugues": "pt",
+    "chinese": "zh-cn",
+    "chino": "zh-cn",
+    "japanese": "ja",
+    "japonés": "ja",
+    "japones": "ja",
+    "korean": "ko",
+    "coreano": "ko",
+}
+
+
+def _parse_explicit_translation_request(text: str) -> tuple[str, str] | None:
+    """
+    Parse prompts like:
+    - Translate this to Spanish: Hello
+    - Translate to en: Hello
+    Returns (source_text, target_locale).
+    """
+    if not text:
+        return None
+
+    patterns = [
+        # English: "Translate this to Spanish: ..."
+        r"^\s*translate(?:\s+this)?\s+to\s+([^:]+?)\s*:\s*(.+)\s*$",
+        # Spanish: "Traduce esto al inglés: ..." / "Traduce al ingles: ..."
+        r"^\s*traduce(?:\s+esto)?\s+a(?:l)?\s+([^:]+?)\s*:\s*(.+)\s*$",
+    ]
+
+    match = None
+    for pattern in patterns:
+        match = re.match(pattern, text, re.IGNORECASE | re.DOTALL)
+        if match:
+            break
+
+    if not match:
+        return None
+
+    target_raw = match.group(1).strip().lower()
+    source_text = match.group(2).strip()
+    if not source_text:
+        return None
+
+    # Normalize common leading articles from Spanish target locale phrases.
+    target_raw = re.sub(r"^(el|la|los|las)\s+", "", target_raw)
+
+    target_locale = LANGUAGE_TO_CODE.get(target_raw, target_raw)
+    return (source_text, target_locale)
+
+
+def _normalize_translated_text(text: str) -> str:
+    """Remove common wrapper prefixes from LLM translation outputs."""
+    if not text:
+        return text
+
+    cleaned = text.strip()
+    lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+    if not lines:
+        return cleaned
+
+    first = lines[0].lower().rstrip(":")
+    if (
+        len(lines) > 1
+        and (
+            first in {
+                "here is the translation",
+                "translation",
+                "translated text",
+                "here's the translation",
+            }
+            or ("translation" in first and (first.startswith("here is") or first.startswith("here's") or first.startswith("heres")))
+        )
+    ):
+        return "\n".join(lines[1:]).strip()
+
+    return cleaned
 
 def _capabilities_text(agent: TranslationNlipAgent) -> str:
     capabilities = [
@@ -36,6 +130,14 @@ class TranslationManager(SessionManager):
     async def process_nlip(self, msg: NLIP_Message) -> NLIP_Message:
         text = msg.extract_text()
 
+        logger.info(
+            "Translation server received request",
+            extra={
+                "has_text": bool(text and text.strip()),
+                "text_len": len(text) if isinstance(text, str) else 0,
+            },
+        )
+
         if not text:
             return NLIP_Factory.create_text("Translation agent expects textual content.")
 
@@ -43,7 +145,32 @@ class TranslationManager(SessionManager):
         if normalized in CAP_QUERY_PHRASES:
             return NLIP_Factory.create_text(_capabilities_text(self.myAgent))
 
+        explicit_translation = _parse_explicit_translation_request(text)
+        if explicit_translation:
+            source_text, target_locale = explicit_translation
+            logger.info(
+                "Explicit translation intent matched",
+                extra={
+                    "target_locale": target_locale,
+                    "source_len": len(source_text),
+                },
+            )
+            translated = await get_translation(source_text, target_locale)
+            if translated and translated.strip():
+                normalized_text = _normalize_translated_text(translated)
+                logger.info(
+                    "Explicit translation completed",
+                    extra={"target_locale": target_locale, "output_len": len(normalized_text)},
+                )
+                return NLIP_Factory.create_text(normalized_text)
+            logger.warning(
+                "Explicit translation failed",
+                extra={"target_locale": target_locale},
+            )
+            return NLIP_Factory.create_text("Translation failed for the requested target locale.")
+
         try:
+            logger.info("Falling back to agent-driven translation processing")
             results = await self.myAgent.process_query(text)
             logger.info(f"TranslationServerResults: {results}")
             clean = _clean_outputs(results)

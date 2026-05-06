@@ -1,24 +1,22 @@
 from app._logging import logger
 import json
 import os
-import litellm
 from litellm import completion
 from pydantic import TypeAdapter
 import time
 from typing import Any, Dict, List, Optional, cast, Callable
-from dotenv import load_dotenv
 
 #litellm._turn_on_debug() #pyright: ignore
-load_dotenv()
 
 _OLLAMA_URL   = os.getenv("OLLAMA_URL")
 _OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
+LOCAL_API_KEY = "local"
 
 if _OLLAMA_URL and _OLLAMA_MODEL:
     MODEL    = f"openai/{_OLLAMA_MODEL}"
     API_BASE: Optional[str] = _OLLAMA_URL.rstrip("/")
 else:
-    MODEL    = "cerebras/llama3.3-70b"
+    MODEL    = None
     API_BASE = None
 
 # PROMPTS
@@ -40,10 +38,10 @@ class Agent:
     - instruction (str): The system instructions
     - tools (list): the initial set of tools
     """
-    def __init__(self, name: str, model: str = MODEL, instruction: Optional[str] = None, tools: Optional[list[Callable]] = None, api_base: Optional[str] = API_BASE):
+    def __init__(self, name: str, model: Optional[str] = MODEL, instruction: Optional[str] = None, tools: Optional[list[Callable]] = None, api_base: Optional[str] = API_BASE):
         self.tstart = time.time()
         self.name: str = name
-        self.model: str = model
+        self.model: Optional[str] = model
         self.api_base: Optional[str] = api_base
         self.instruction = instruction
         self.messages: List[Any] = [
@@ -175,11 +173,18 @@ class Agent:
 
 
     async def _drive_llm(self) -> list[str]:
+        if not self.model or not self.api_base:
+            raise RuntimeError(
+                "An LLM endpoint and model must be configured to run LLM-backed agents. "
+                "Set the service's endpoint/model environment variables (for example via Docker Model Runner) or disable LLM-dependent servers."
+            )
+
         response = cast(Any, completion(
             model=self.model,
             messages=self.messages,
             tools=self.tools,
             api_base=self.api_base,
+            api_key=LOCAL_API_KEY,
         ))
         response_msg = response.choices[0].message
         if response_msg is None:
@@ -199,6 +204,7 @@ class Agent:
                 messages=self.messages,
                 tools=self.tools,
                 api_base=self.api_base,
+                api_key=LOCAL_API_KEY,
             ))
             response_msg = response.choices[0].message
             self._handle_response(response_msg)

@@ -26,14 +26,15 @@ Expo/React Native client for the NLIP Swarm project. The mobile experience captu
 	```
 
 2. **Set environment variables**
-	- Duplicate `example.env` to `.env` or export `EXPO_PUBLIC_API_BASE` in your shell.
-	- Typical value during local development: `http://localhost:8024` (matches the FastAPI session server).
+	- Optional only: export `EXPO_PUBLIC_API_BASE` if you want to override the default backend URL.
+	- Default during local development is `http://localhost:8024`.
 
 3. **Start the Expo dev server**
 	```bash
 	npm run start
 	```
 	- Press `i` for iOS simulator, `a` for Android, or `w` for web.
+	- Use `npm run start:tunnel` only when you need remote device access through ngrok.
 	- Expo Go users can scan the QR code printed in the terminal.
 
 Keep both processes running so the frontend can log in, fetch `/me`, and send NLIP traffic.
@@ -42,7 +43,8 @@ Keep both processes running so the frontend can log in, fetch `/me`, and send NL
 
 | Command          | Description |
 |------------------|-------------|
-| `npm run start`  | Expo dev server with tunnel (default workflow). |
+| `npm run start`  | Expo dev server on the local network. |
+| `npm run start:tunnel` | Expo dev server with tunnel for remote device access. |
 | `npm run android`| Build & launch the Android binary via `expo run:android`. |
 | `npm run ios`    | Build & launch the iOS binary via `expo run:ios`. |
 | `npm run web`    | Serve the app via Expo Web. |
@@ -65,6 +67,6 @@ frontend/
 
 | Name                      | Purpose |
 |---------------------------|---------|
-| `EXPO_PUBLIC_API_BASE`    | Fully qualified URL of the backend (e.g., `https://swarm.example.com`). Exposed to the client. |
+| `EXPO_PUBLIC_API_BASE`    | Fully qualified URL of the backend. Defaults to `http://localhost:8024` if unset. |
 
 For backend instructions or full-stack deployment (Docker Compose), refer to the root-level `README.md`.
