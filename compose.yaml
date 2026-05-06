@@ -165,6 +165,10 @@ volumes:
   db_data:
     name: db_data
 
+# Docker Model Runner (DMR) configuration.
+# Defines the local AI models that Docker will pull and serve.
+# Each service above declares which models it needs (endpoint_var / model_var),
+# and DMR injects the corresponding OLLAMA_URL / TRANSLATION_URL / etc. at runtime.
 models:
   llm:
     model: ai/llama3.2:3B-Q4_0

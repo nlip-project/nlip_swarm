@@ -2,6 +2,8 @@
 name = "nlip-swarm-registrar"
 version = "0.1.0"
 requires-python = ">=3.11"
+# NOTE: Full runtime dependencies are in requirements.txt at the repo root.
+# This file only tracks build/tool configuration.
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",

@@ -593,9 +593,9 @@ TOOL USAGE RULES
   {"url": "...", "message": "..."}
 
 MEDIA / STRUCTURED PAYLOADS
-If the incoming NLIP request contains structured or media data (images, audio, binary payloads), prefer using relay_nlip_to_server so the full payload is forwarded.
+If the incoming NLIP request contains structured or media data (images, audio, binary payloads), use send_to_server with the full NLIP JSON so the entire payload is forwarded.
 
-Use send_to_server only for simple text messages.
+Use send_to_server for both simple text and structured/media messages.
 """
 
 class CoordinatorNlipAgent(NlipAgent):

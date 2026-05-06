@@ -54,7 +54,7 @@ Top‑level in `backend/`:
     - `base.py` – generic tool‑using LLM `Agent` built on `litellm`.
     - `nlip_agent.py` – NLIP‑aware agent base class (specializes `Agent` for NLIP messages).
     - `coordinator_nlip_agent.py` – coordinator agent with tools to talk to other NLIP servers.
-    - `translation.py` – `TranslationNlipAgent` based on `googletrans`.
+    - `translation.py` – `TranslationNlipAgent` using a local LLM (`TRANSLATION_MODEL`) with `googletrans` as fallback.
     - `imageRecognition.py` – `ImageRecognitionNlipAgent` using Ollama’s image model (e.g. `llava`).
     - `textAgent.py` – `LLamaTextAgent` wrapper around the Ollama text model for NLIP text tasks.
     - `sound.py` – `SoundAgent` for Whisper‑based ASR plus optional translation.
@@ -178,7 +178,7 @@ agent in a `SessionManager` and exposes it over HTTP.
 
 Defined in `app.agents.translation.TranslationNlipAgent`.
 
-- Backed by `googletrans.Translator` to perform translations.
+- Uses a local LLM model (`TRANSLATION_MODEL`) when configured; falls back to `googletrans` for development/fallback scenarios.
 - Exposes a single tool:
 
   ```python
@@ -325,18 +325,40 @@ source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. Start Ollama for text/image agents (optional but recommended)
+### 2. Start PostgreSQL
+
+The backend requires a running PostgreSQL 15 instance. The easiest way locally:
+
+```bash
+docker run -d --name nlip-db -p 5432:5432 \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=nlip_db \
+  postgres:15
+```
+
+Then set the connection URL in your environment (or `backend/.env`):
+
+```bash
+export DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/nlip_db
+```
+
+The backend creates all tables automatically on first start.
+
+### 3. Start Ollama for text/image agents (optional but recommended)
 
 If you want the text and image agents to use local models via Ollama:
 
    ```bash
    ollama serve &
-   ollama pull llama3.1
+   ollama pull llama3.2:3b
    ```
 
    Set `OLLAMA_URL` if your server listens somewhere other than `http://localhost:11434`.
 
-3. **Launch the Whisper sidecar** (see the commands in the Audio/Sound Agent section above). From the `backend/` directory run:
+### 4. Launch the Whisper sidecar
+
+See the "Local Whisper Server" section above for full setup. From the `backend/` directory run:
 
    ```bash
    ./start-whisper.sh
@@ -344,7 +366,7 @@ If you want the text and image agents to use local models via Ollama:
 
    Leave this process running on `http://localhost:9002`.
 
-### 4. Run the multi‑agent backend
+### 5. Run the multi‑agent backend
 
 The current multi‑agent setup is started via `app.system.main`:
 
@@ -358,7 +380,7 @@ This will:
 - Start the coordinator server on `http://0.0.0.0:8024` (HTTP `/nlip` and `/health`).
 - Register the basic, translate, image, and text agents as in‑process `mem://` endpoints.
 
-### 5. Exercise the NLIP endpoint
+### 6. Exercise the NLIP endpoint
 
 Send an NLIP JSON payload to the coordinator:
 
@@ -374,7 +396,7 @@ post their JSON representation.
 For image or audio flows, include `image/base64` or `audio` submessages
 in the NLIP payload as described above.
 
-### 6. Run the tests
+### 7. Run the tests
 
 From the repository root (or `backend/`):
 
@@ -388,6 +410,71 @@ pytest backend/tests
   expect live external services (Ollama, Whisper). Some translation‑related
   tests target the older Ollama‑based translation helper; keep that in
   mind if you modify the translation agent.
+
+---
+
+## Authentication
+
+The coordinator exposes user-facing auth endpoints on the same port as `/nlip`:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/signup` | Create account. Body: `{ "email": str, "password": str, "name": str }` |
+| POST | `/login` | Authenticate. Body: `{ "email": str, "password": str }`. Sets `session_id` cookie. |
+| POST | `/logout` | Clear the session cookie. |
+| GET | `/me` | Return the current user's profile. |
+| PUT | `/me` | Update profile fields: `name`, `location`, `phone_number`, `country_code`, `avatar_uri`. |
+
+Sessions are tracked via an HTTP cookie (`session_id`). Include credentials (`credentials: "include"` in fetch, or `-c cookiejar` in curl) on every request.
+
+Passwords are stored as bcrypt hashes via `passlib[bcrypt]`.
+
+---
+
+## Conversation History
+
+Every NLIP exchange is persisted to PostgreSQL. The coordinator exposes REST endpoints for retrieving and managing that history:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/conversations` | List conversations for the authenticated user. |
+| POST | `/conversations` | Create a named conversation. Body: `{ "title": str }` |
+| GET | `/conversations/{id}/messages` | Paginated message history for a conversation. |
+| POST | `/conversations/{id}/archive` | Archive a conversation. |
+
+To continue an existing conversation, include `conversation_id` in the NLIP message metadata. If omitted, the last active conversation for the session is reused; a new one is created automatically if none exists.
+
+---
+
+## Environment Variables
+
+All configuration is read from environment variables (or a `backend/.env` file). The authoritative list is in `app/system/config.py`.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `DATABASE_URL` | (required) | PostgreSQL async URL, e.g. `postgresql+asyncpg://postgres:postgres@localhost:5432/nlip_db` |
+| `OLLAMA_URL` | (required) | LLM endpoint base URL, e.g. `http://localhost:11434` |
+| `OLLAMA_MODEL` | (required) | Default LLM model name, e.g. `ai/llama3.2:3B-Q4_0` |
+| `OLLAMA_IMAGE_MODEL` | `ai/ministral3` | Vision model for image description |
+| `OLLAMA_TIMEOUT` | `60.0` | LLM request timeout in seconds |
+| `OLLAMA_TEXT_MODEL` | — | Override model for the text agent specifically |
+| `TEXT_TOOL_MODEL` | — | Override model for the text tool |
+| `TEXT_TOOL_API_BASE` | — | Override API base URL for the text tool |
+| `WHISPER_URL` | `http://localhost:9002` | Whisper-compatible STT endpoint |
+| `WHISPER_ENDPOINT` | `/v1/audio/transcriptions` | Whisper API path |
+| `WHISPER_MODEL` | `large-v3` | Whisper model name |
+| `WHISPER_TIMEOUT` | `90.0` | Whisper request timeout in seconds |
+| `TRANSLATION_URL` | — | Override translation service base URL |
+| `TRANSLATION_MODEL` | — | Override translation model name |
+| `NLIP_COORD_URL` | `http://0.0.0.0:8024` | Coordinator URL (used for self-reference) |
+| `NLIP_BASIC_URL` | `http://basic:8025` | Basic agent URL |
+| `NLIP_TRANSLATE_URL` | `http://translate:8026` | Translation agent URL |
+| `NLIP_TEXT_URL` | `http://text:8027` | Text agent URL |
+| `NLIP_IMAGE_URL` | `http://image:8028` | Image agent URL |
+| `NLIP_SOUND_URL` | `http://sound:8029` | Sound agent URL |
+| `NLIP_LOG_LEVEL` | `INFO` | Log verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
+| `CORS_ALLOW_ORIGINS` | — | Comma-separated allowed CORS origins |
+| `CORS_ALLOW_ORIGIN_REGEX` | `.*` | CORS origin regex (used when `CORS_ALLOW_ORIGINS` is unset) |
 
 ---
 
