@@ -91,7 +91,22 @@ nlip_swarm/
 
 ### Docker Compose (full stack)
 
-1. From the repository root, copy the sample environment files (`frontend/example.env`, `backend/app/example.env`) as needed.
+1. Create environment files from the variables below, or set them directly in your shell.
+
+   **Frontend** — create `frontend/.env`:
+   ```
+   EXPO_PUBLIC_API_BASE=http://localhost:8024
+   ```
+
+   **Backend** — create `backend/.env`:
+   ```
+   DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/nlip_db
+   NLIP_LOG_LEVEL=INFO
+   # Optional: override LLM endpoint and model
+   OLLAMA_URL=http://ollama:11434
+   OLLAMA_MODEL=ai/llama3.2:3B-Q4_0
+   ```
+
 2. Start the full stack with Docker:
    ```bash
    docker compose up --build
@@ -106,3 +121,4 @@ nlip_swarm/
 - **Christopher Calderone** <ccald@udel.edu>
 - **Kevin Kramer** <kkramer@udel.edu>
 - **Benjamin Zlatin** <bzlatin@udel.edu>
+- **Tyler Walsh** <tjwalsh@udel.edu>

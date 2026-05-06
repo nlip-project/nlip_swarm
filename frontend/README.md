@@ -69,4 +69,6 @@ frontend/
 |---------------------------|---------|
 | `EXPO_PUBLIC_API_BASE`    | Fully qualified URL of the backend. Defaults to `http://localhost:8024` if unset. |
 
+> **On a physical device:** `localhost` on a phone refers to the phone itself, not your dev machine. Set `EXPO_PUBLIC_API_BASE` to your machine's LAN IP instead, e.g. `http://192.168.1.50:8024`.
+
 For backend instructions or full-stack deployment (Docker Compose), refer to the root-level `README.md`.

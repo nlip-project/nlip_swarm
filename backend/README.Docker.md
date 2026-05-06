@@ -1,3 +1,23 @@
+### Service Architecture
+
+`compose.yaml` runs the following services:
+
+| Service | Port | Role |
+|---------|------|------|
+| coordinator | 8024 (published) | Central NLIP router — the only service the frontend talks to |
+| basic | 8025 (internal) | General LLM chat agent |
+| translate | 8026 (internal) | Text translation agent |
+| text | 8027 (internal) | Text generation agent |
+| image | 8028 (internal) | Image description agent |
+| sound | 8029 (internal) | Speech-to-text agent (via Whisper) |
+| whisper | 9002 (internal) | Whisper ASR HTTP server |
+| db | 5432 (published) | PostgreSQL 15 database |
+| frontend | 8081, 19000–19002 (published) | Expo dev server |
+
+Agent services (basic, translate, text, image, sound) are built from `Dockerfile.agent-service` using the `SERVICE_ROLE=<role>` build argument. Each role strips unused agent and server code from the image, keeping individual images lean.
+
+The coordinator is the only externally accessible NLIP endpoint. All other agents communicate over the internal Docker network.
+
 ### Building and running your application
 
 When you're ready, start your application by running:

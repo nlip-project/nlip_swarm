@@ -1,4 +1,4 @@
-"""NLIP server wrapper for the ImageNlipAgent."""
+"""NLIP server wrapper for image recognition. Routes requests directly to the describe_image() tool function."""
 
 from __future__ import annotations
 

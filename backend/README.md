@@ -54,32 +54,32 @@ Top‑level in `backend/`:
     - `base.py` – generic tool‑using LLM `Agent` built on `litellm`.
     - `nlip_agent.py` – NLIP‑aware agent base class (specializes `Agent` for NLIP messages).
     - `coordinator_nlip_agent.py` – coordinator agent with tools to talk to other NLIP servers.
-    - `translation.py` – `TranslationNlipAgent` based on `googletrans`.
-    - `imageRecognition.py` – `ImageRecognitionNlipAgent` using Ollama’s image model (e.g. `llava`).
-    - `textAgent.py` – `LLamaTextAgent` wrapper around the Ollama text model for NLIP text tasks.
-    - `sound.py` – `SoundAgent` for Whisper‑based ASR plus optional translation.
+    - `translation.py` – `TranslationNlipAgent` using a local LLM (`TRANSLATION_MODEL`) with `googletrans` as fallback.
+    - `imageRecognition.py` – `describe_image()` async tool function using Ollama’s vision model (`OLLAMA_IMAGE_MODEL`, default `ai/ministral3`).
+    - `textAgent.py` – `TextNlipAgent` wrapper around the Ollama text model for NLIP text tasks.
+    - `sound.py` – `SoundNlipAgent` for Whisper‑based ASR plus optional translation.
   - `servers/`
     - `basic_server.py` – wraps a generic `Agent` in a `NlipSessionServer`.
     - `coordinator_server.py` – exposes the `CoordinatorNlipAgent` as HTTP `/nlip`.
     - `translate_server.py` – NLIP translation server using `TranslationNlipAgent`.
-    - `image_server.py` – NLIP image recognition server using `ImageRecognitionNlipAgent`.
-    - `text_server.py` – NLIP text server using `LLamaTextAgent`.
+    - `image_server.py` – NLIP image recognition server; routes directly to `describe_image()`.
+    - `text_server.py` – NLIP text server using `TextNlipAgent`.
+    - `sound_server.py` – NLIP sound/transcription server using `SoundNlipAgent`.
   - `http_server/`
     - `nlip_session_server.py` – reusable FastAPI `NlipSessionServer` + `SessionManager` abstraction with cookie‑based sessions and `/nlip` + `/health` routes.
   - `http_client/`
     - `nlip_async_client.py` – async client that can talk to HTTP URLs or in‑process `mem://` endpoints via `httpx.ASGITransport`.
   - `system/`
-    - `config.py` – defines `MOUNT_URLS` and `DEFAULT_AGENT_ENDPOINTS`.
+    - `config.py` – defines `MOUNT_URLS`, `DEFAULT_AGENT_ENDPOINTS`, `MODELS`, and `PATHS`.
+    - `agentAdder.py` – parses `agent_spec.json` and dynamically creates NLIP servers on startup.
     - `mount_spec.py` – utility that starts HTTP servers or registers in‑process apps for `mem://` URLs.
     - `main.py` – main entrypoint that wires coordinator + agents and runs them.
-  - `deprecated/`
-    - Original “supervisor” stack (`supervisor.py`, `api.py`, `routes/`) that used a monolithic app at `/nlip` with its own translation and image logic. Kept for reference; some pieces are out of sync with the current agents.
   - `_logging.py` – logging configuration used throughout.
   - `__init__.py` – defines `MEM_APP_TBL`, the registry for in‑process apps.
 
 Other top‑level files:
 
-- `run.py` – legacy uvicorn launcher (`app.main:app`, currently not wired into the new coordinator stack).
+- `agent_spec.json` – JSON configuration for adding custom agents/servers on startup (see “Custom Agent Configuration” below).
 - `requirements.txt` – backend Python dependencies.
 - `pyproject.toml` – project metadata (`nlip-swarm-registrar`).
 - `tests/` – pytest suite for routes, translation/image flow, and sound agent.
@@ -112,7 +112,8 @@ URLs so the coordinator can talk to them without opening extra ports:
 - Basic: `mem://basic/nlip`
 - Translate: `mem://translate/nlip`
 - Image: `mem://image/nlip`
-- Text: `mem://text/nlip` (used by `text_server`)
+- Text: `mem://text/nlip`
+- Sound: `mem://sound/nlip`
 
 The mapping from logical names to URLs is in `app.system.config.MOUNT_URLS`.
 
@@ -178,7 +179,7 @@ agent in a `SessionManager` and exposes it over HTTP.
 
 Defined in `app.agents.translation.TranslationNlipAgent`.
 
-- Backed by `googletrans.Translator` to perform translations.
+- Uses a local LLM model (`TRANSLATION_MODEL`) when configured; falls back to `googletrans` for development/fallback scenarios.
 - Exposes a single tool:
 
   ```python
@@ -195,11 +196,11 @@ accepts `NLIP_Message` instances on `/nlip` and returns translated texts.
 
 ### Text Agent
 
-Defined in `app.agents.textAgent.LLamaTextAgent`.
+Defined in `app.agents.textAgent.TextNlipAgent`.
 
 - Talks to a local Ollama instance:
   - `OLLAMA_URL` (default `http://localhost:11434`)
-  - `OLLAMA_TEXT_MODEL` (default `llama3.2:3b`)
+  - `OLLAMA_TEXT_MODEL` or `TEXT_TOOL_MODEL` (falls back to `OLLAMA_MODEL`)
 - `handle(NLIP_Message)`:
   - Extracts relevant text from the NLIP message if:
     - `format == AllowedFormats.text`, or
@@ -211,41 +212,37 @@ Defined in `app.agents.textAgent.LLamaTextAgent`.
 
 ### Image Recognition Agent
 
-Defined in `app.agents.imageRecognition.ImageRecognitionNlipAgent`.
+Defined in `app.agents.imageRecognition` as a standalone `describe_image()` async tool function (no agent class).
 
-- Uses Ollama’s image endpoint (`/api/generate`) with an image‑capable
-  model (default `OLLAMA_IMAGE_MODEL="llava"`).
-- Tool:
+- Uses Ollama’s vision endpoint with an image‑capable model:
+  - `OLLAMA_IMAGE_MODEL` (default `ai/ministral3`)
+  - `OLLAMA_TIMEOUT` (default `60.0` seconds)
+- Tool signature:
 
   ```python
-  async def recognize_image(encodedImage: str, prompt: Optional[str] = None) -> Optional[str]
+  async def describe_image(image_base64: str, prompt: Optional[str] = None) -> str
   ```
 
-- Takes base64‑encoded image bytes (`encodedImage`) and an optional
-  textual prompt, returns an English description string or `None` on error.
+- Takes a base64‑encoded image (plain base64 or data URL) and an optional
+  text prompt; returns an English description string.
 
-`app.servers.image_server` wraps this agent for `/nlip` access.
+`app.servers.image_server` routes `/nlip` requests directly to `describe_image()` via `ImageSessionManager`.
 
 ### Audio / Sound Agent
 
-Defined in `app.agents.sound.SoundAgent`.
+Defined in `app.agents.sound.SoundNlipAgent`.
 
-- Converts NLIP audio submessages into localized text via:
+- Converts base64‑encoded audio into localized text via:
   1. Whisper HTTP server for ASR.
-  2. Optional translation through a translation helper (see the
-     translation agent / tests for expected behavior).
-- Main configuration (all optional):
+  2. Optional translation via the translation helper.
+- Main configuration:
   - `WHISPER_URL` – base URL for the Whisper server (default `http://localhost:9002`).
   - `WHISPER_MODEL` – model name (`large-v3` by default).
   - `WHISPER_TIMEOUT` – seconds to wait for Whisper (default `90`).
-- Input: one or more submessages with `format: "audio"` and nested
-  content describing base64 or raw bytes.
-- Output: a structure containing the final text, chosen language, and
-  metadata about per‑sample segments.
+- Input: base64 audio payload (plain or data URL), optional `language_hint` and `target_locale`.
+- Output: transcript text, plus translation if `target_locale` differs from the detected language.
 
-The sound agent is currently used directly by tests and is not wired as
-its own FastAPI server in `app.servers`, but it follows the same NLIP
-message conventions.
+`app.servers.sound_server` wires this agent into an NLIP server mounted at `mem://sound/nlip` (or `http://sound:8029` in Docker).
 
 ---
 
@@ -325,18 +322,40 @@ source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. Start Ollama for text/image agents (optional but recommended)
+### 2. Start PostgreSQL
+
+The backend requires a running PostgreSQL 15 instance. The easiest way locally:
+
+```bash
+docker run -d --name nlip-db -p 5432:5432 \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=nlip_db \
+  postgres:15
+```
+
+Then set the connection URL in your environment (or `backend/.env`):
+
+```bash
+export DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/nlip_db
+```
+
+The backend creates all tables automatically on first start.
+
+### 3. Start Ollama for text/image agents (optional but recommended)
 
 If you want the text and image agents to use local models via Ollama:
 
    ```bash
    ollama serve &
-   ollama pull llama3.1
+   ollama pull llama3.2:3b
    ```
 
    Set `OLLAMA_URL` if your server listens somewhere other than `http://localhost:11434`.
 
-3. **Launch the Whisper sidecar** (see the commands in the Audio/Sound Agent section above). From the `backend/` directory run:
+### 4. Launch the Whisper sidecar
+
+See the "Local Whisper Server" section above for full setup. From the `backend/` directory run:
 
    ```bash
    ./start-whisper.sh
@@ -344,7 +363,7 @@ If you want the text and image agents to use local models via Ollama:
 
    Leave this process running on `http://localhost:9002`.
 
-### 4. Run the multi‑agent backend
+### 5. Run the multi‑agent backend
 
 The current multi‑agent setup is started via `app.system.main`:
 
@@ -356,9 +375,10 @@ python -m app.system.main
 This will:
 
 - Start the coordinator server on `http://0.0.0.0:8024` (HTTP `/nlip` and `/health`).
-- Register the basic, translate, image, and text agents as in‑process `mem://` endpoints.
+- Register the basic, translate, image, text, and sound agents as in‑process `mem://` endpoints.
+- Load and mount any custom agents defined in `agent_spec.json`.
 
-### 5. Exercise the NLIP endpoint
+### 6. Exercise the NLIP endpoint
 
 Send an NLIP JSON payload to the coordinator:
 
@@ -374,7 +394,7 @@ post their JSON representation.
 For image or audio flows, include `image/base64` or `audio` submessages
 in the NLIP payload as described above.
 
-### 6. Run the tests
+### 7. Run the tests
 
 From the repository root (or `backend/`):
 
@@ -391,24 +411,155 @@ pytest backend/tests
 
 ---
 
-## Legacy (Deprecated) Stack
+## Authentication
 
-The `app/deprecated/` tree contains the original NLIP supervisor
-implementation that exposed a single FastAPI app with:
+The coordinator exposes user-facing auth endpoints on the same port as `/nlip`:
 
-- `POST /nlip` – session‑aware NLIP endpoint.
-- `GET /health` – health check.
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/signup` | Create account. Body: `{ "email": str, "password": str, "name": str }` |
+| POST | `/login` | Authenticate. Body: `{ "email": str, "password": str }`. Sets `session_id` cookie. |
+| POST | `/logout` | Clear the session cookie. |
+| GET | `/me` | Return the current user's profile. |
+| PUT | `/me` | Update profile fields: `name`, `location`, `phone_number`, `country_code`, `avatar_uri`. |
 
-Key files there:
+Sessions are tracked via an HTTP cookie (`session_id`). Include credentials (`credentials: "include"` in fetch, or `-c cookiejar` in curl) on every request.
 
-- `supervisor.py` – translation + image flow, including English pivot logic.
-- `api.py` – `NLIP_Application` / `NLIP_Session` abstractions and FastAPI setup.
-- `routes/nlip.py` and `routes/health.py` – route handlers for NLIP and health.
+Passwords are stored as bcrypt hashes via `passlib[bcrypt]`.
 
-This stack previously used an Ollama‑based `OllamaTranslationAgent` and
-`LlavaImageRecognitionAgent`. Parts of that design are now implemented
-separately in the new agent modules. The deprecated code is kept for
-reference and for tests that still target the older behavior, but the
-recommended entrypoint going forward is the coordinator‑based
-multi‑agent stack described above.
+---
 
+## Conversation History
+
+Every NLIP exchange is persisted to PostgreSQL. The coordinator exposes REST endpoints for retrieving and managing that history:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/conversations` | List conversations for the authenticated user. |
+| POST | `/conversations` | Create a named conversation. Body: `{ "title": str }` |
+| GET | `/conversations/{id}/messages` | Paginated message history for a conversation. |
+| POST | `/conversations/{id}/archive` | Archive a conversation. |
+
+To continue an existing conversation, include `conversation_id` in the NLIP message metadata. If omitted, the last active conversation for the session is reused; a new one is created automatically if none exists.
+
+---
+
+## Environment Variables
+
+All configuration is read from environment variables (or a `backend/.env` file). The authoritative list is in `app/system/config.py`.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `DATABASE_URL` | (required) | PostgreSQL async URL, e.g. `postgresql+asyncpg://postgres:postgres@localhost:5432/nlip_db` |
+| `OLLAMA_URL` | (required) | LLM endpoint base URL, e.g. `http://localhost:11434` |
+| `OLLAMA_MODEL` | (required) | Default LLM model name, e.g. `ai/llama3.2:3B-Q4_0` |
+| `OLLAMA_IMAGE_MODEL` | `ai/ministral3` | Vision model for image description |
+| `OLLAMA_TIMEOUT` | `60.0` | LLM request timeout in seconds |
+| `OLLAMA_TEXT_MODEL` | — | Override model for the text agent specifically |
+| `TEXT_TOOL_MODEL` | — | Override model for the text tool |
+| `TEXT_TOOL_API_BASE` | — | Override API base URL for the text tool |
+| `WHISPER_URL` | `http://localhost:9002` | Whisper-compatible STT endpoint |
+| `WHISPER_ENDPOINT` | `/v1/audio/transcriptions` | Whisper API path |
+| `WHISPER_MODEL` | `large-v3` | Whisper model name |
+| `WHISPER_TIMEOUT` | `90.0` | Whisper request timeout in seconds |
+| `TRANSLATION_URL` | — | Override translation service base URL |
+| `TRANSLATION_MODEL` | — | Override translation model name |
+| `NLIP_COORD_URL` | `http://0.0.0.0:8024` | Coordinator URL (used for self-reference) |
+| `NLIP_BASIC_URL` | `http://basic:8025` | Basic agent URL |
+| `NLIP_TRANSLATE_URL` | `http://translate:8026` | Translation agent URL |
+| `NLIP_TEXT_URL` | `http://text:8027` | Text agent URL |
+| `NLIP_IMAGE_URL` | `http://image:8028` | Image agent URL |
+| `NLIP_SOUND_URL` | `http://sound:8029` | Sound agent URL |
+| `NLIP_LOG_LEVEL` | `INFO` | Log verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
+| `CORS_ALLOW_ORIGINS` | — | Comma-separated allowed CORS origins |
+| `CORS_ALLOW_ORIGIN_REGEX` | `.*` | CORS origin regex (used when `CORS_ALLOW_ORIGINS` is unset) |
+| `AGENT_SPEC_PATH` | `""` (backend root) | Path relative to the backend root where `agent_spec.json` lives |
+
+---
+
+## Custom Agent Configuration
+
+The backend supports adding custom NLIP agents and servers without modifying Python code. On startup, `app.system.main` reads `backend/agent_spec.json` and mounts any servers defined there alongside the built-in agents.
+
+### agent_spec.json format
+
+The file is a JSON array. Each object defines one server to create:
+
+```json
+[
+  {
+    "scheme": "mem",
+    "suffix": "MyAgentCookie",
+    "identifier": "myagent",
+    "session_manager": "text",
+    "agent": {
+      "name": "MyAgent",
+      "model": "ai/llama3.2:3B-Q4_0",
+      "instruction": "You are a helpful assistant specialized in ...",
+      "tools": []
+    },
+    "environment": {
+      "OLLAMA_URL": "http://my-ollama-host:11434"
+    }
+  }
+]
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `scheme` | yes | `"mem"` for in-process routing; `"http"` for a real TCP port |
+| `suffix` | yes | Unique string used for the session cookie name |
+| `identifier` | yes | For `mem`: in-process name (e.g. `"myagent"` → `mem://myagent/`). For `http`: `"host:port"` |
+| `session_manager` | yes | One of: `coordinator`, `image`, `text`, `translate`, `sound`, `default` |
+| `agent.name` | yes | Display name for the agent |
+| `agent.model` | no | LLM model name; defaults to `OLLAMA_MODEL` env var |
+| `agent.instruction` | no | System prompt / persona for the agent |
+| `agent.tools` | no | List of tool names from the registry (see below) |
+| `environment` | no | Key-value pairs set as environment variables before the server starts |
+
+### Available session managers
+
+| Manager | What it does |
+|---------|-------------|
+| `default` | Generic text agent — passes any text through the configured LLM |
+| `text` | `TextSessionManager` — same as the built-in text agent |
+| `translate` | `TranslationManager` — LLM translation with googletrans fallback |
+| `image` | `ImageSessionManager` — routes to `describe_image()` |
+| `sound` | `SoundSessionManager` — Whisper ASR + optional translation |
+| `coordinator` | `NlipManager` — full coordinator with server-discovery tools |
+
+### Available tools (agent.tools)
+
+| Tool name | Function |
+|-----------|----------|
+| `connect_to_server` | Create an `NlipAsyncClient` for a URL and register it |
+| `send_to_server` | Send a text message to a registered server and return the response |
+| `get_all_capabilities` | Query all registered servers for their NLIP capability descriptions |
+
+### Changing the spec file location
+
+By default `agent_spec.json` is read from the `backend/` root. Override with:
+
+```bash
+export AGENT_SPEC_PATH=path/relative/to/backend
+```
+
+### Example: add a custom "farming advisor" agent
+
+```json
+[
+  {
+    "scheme": "mem",
+    "suffix": "FarmingAdvisorCookie",
+    "identifier": "farming",
+    "session_manager": "default",
+    "agent": {
+      "name": "FarmingAdvisor",
+      "instruction": "You are an expert agricultural advisor. Answer questions about crop health, irrigation, and pest control.",
+      "tools": []
+    }
+  }
+]
+```
+
+After restarting the backend, the advisor is reachable at `mem://farming/nlip` and the coordinator will route appropriate queries to it automatically via capability discovery.
